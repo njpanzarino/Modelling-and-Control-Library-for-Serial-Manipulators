@@ -1,9 +1,11 @@
-classdef testClass
-    %testClass Model of a serial robot manipulator
+classdef Kin_Model
+    %Kin_Model Model of a serial robot manipulator
     
     properties
         q
         DOF
+        J
+        inv_J
     end
     
     properties(Access = public)
@@ -25,7 +27,7 @@ classdef testClass
     
     methods(Static)
         function obj = fromH_TransChain(varargin)
-            obj = testClass;
+            obj = Kin_Model;
             obj = obj.init(size(DH_Matrix,1));
             for i = 1:obj.DOF
                 obj.T_matrices{i,i+1}=vpa(varargin{i});
@@ -34,10 +36,10 @@ classdef testClass
         end
         
         function obj=fromDH(DH_Matrix)
-            obj = testClass;
+            obj = Kin_Model;
             obj = obj.init(size(DH_Matrix,1));
             for i = 1:obj.DOF
-                obj.T_matrices{i,i+1}=vpa(H_Trans.fromDH(DH_Matrix(i,:)).H);
+                obj.T_matrices{i,i+1}=simplify(vpa(H_Trans.fromDH(DH_Matrix(i,:)).H));
             end
             obj=obj.calculateFromChain();
         end
@@ -62,7 +64,7 @@ classdef testClass
                        for i=r:(c-1)
                            temp=temp*obj.T_matrices{i,i+1};
                        end
-                       obj.T_matrices{r,c} = vpa(temp);
+                       obj.T_matrices{r,c} = simplify(vpa(temp));
                    end
                end
             end
@@ -70,7 +72,7 @@ classdef testClass
             for r = 1:size(obj.T_matrices,1)
                for c = 1:size(obj.T_matrices,2) 
                    if c<r
-                       obj.T_matrices{r,c} = vpa(inv(obj.T_matrices{c,r}));
+                       obj.T_matrices{r,c} = simplify(vpa(inv(obj.T_matrices{c,r})));
                    end
                end
             end
@@ -78,16 +80,20 @@ classdef testClass
         
         function obj = calculateFromAbsolute(obj)
             for i=2:size(obj.T_matrices,2)
-                obj.T_matrices{i,1} = vpa(inv(obj.T_matrices{1,i}));
+                obj.T_matrices{i,1} = simplify(vpa(inv(obj.T_matrices{1,i})));
             end
             
             for r = 2:size(obj.T_matrices,1)
                for c = 2:size(obj.T_matrices,2)
                    if c~=r
-                       obj.T_matrices{r,c} = vpa(obj.T_matrices{r,1}*obj.T_matrices{1,c});
+                       obj.T_matrices{r,c} = simplify(vpa(obj.T_matrices{r,1}*obj.T_matrices{1,c}));
                    end
                end
             end
+        end
+        
+        function obj = calculateJacobian(obj)
+            obj.J=H_Trans(obj.T(0,obj.DOF)).getJacobian(obj.q);
         end
     end
     

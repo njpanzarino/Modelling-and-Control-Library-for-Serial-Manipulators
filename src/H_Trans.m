@@ -17,7 +17,7 @@ classdef H_Trans
         function obj = H_Trans(varargin)
             %obj.H=eye(4);
             for i=1:length(varargin)
-                obj.H=obj.H*H_Trans_single(varargin{i});
+                obj.H=obj.H*H_Trans.single(varargin{i});
             end
         end
         
@@ -35,6 +35,18 @@ classdef H_Trans
             value = obj.H(1:3,4);
         end
         
+        function value = getRotVel(obj,var)
+           w=simplify(diff(obj.Rot,var)*obj.Rot.');
+           value=[w(3,2);w(1,3);w(2,1)];
+        end
+        
+        function value = getJacobian(obj,q)
+            value = sym(zeros(6,size(q,1)));
+            for i=1:size(q,1)
+                value(1:3,i) = simplify(diff(obj.Trans,q(i)));
+                value(4:6,i) = simplify(obj.getRotVel(q(i)));
+            end 
+        end
     end
     
     methods(Static)
@@ -56,7 +68,7 @@ classdef H_Trans
             0,0,0,1];
         end
         
-        function M = H_Trans_single( input_args )
+        function M = single( input_args )
         M=eye(4);
             if isequal(size(input_args),[1,3]),
                 M(1:3,4) = input_args(1,:);
