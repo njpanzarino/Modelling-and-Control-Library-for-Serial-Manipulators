@@ -49,12 +49,37 @@ classdef H_Trans
         end
     end
     
+    methods
+        function  c = mtimes(a,b)
+            c.H=mtimes(a.H,b.H);
+        end
+    end
+    
     methods(Static)
         function obj = fromDH(DH)
             obj = H_Trans();
             for i = 1:size(DH,1)
                 obj.H=obj.H*H_Trans.fromDH_single(DH(i,1),DH(i,2),DH(i,3),DH(i,4));
             end
+        end
+        
+        function value = rotX(theta)
+            value = [1,0,0,0;
+                    0,cos(theta),-sin(theta),0;
+                    0,sin(theta),cos(theta),0;
+                    0,0,0,1];
+        end
+        function value = rotY(theta)
+            value = [cos(theta),0,sin(theta),0;
+                    0,1,0,0;
+                    -sin(theta),0,cos(theta),0;
+                    0,0,0,1];
+        end
+        function value = rotZ(theta)
+            value = [cos(theta),-sin(theta),0,0;
+                    sin(theta),cos(theta),0,0;
+                    0,0,1,0;
+                    0,0,0,1];
         end
     end
     
