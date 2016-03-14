@@ -7,14 +7,15 @@ classdef Kin_Model
     
     properties(SetAccess = private)
         q
-        DOF
+        n_frames
         J
         inv_J
+        inv_J0
     end
     
     properties(Access = private)
         T_matrices
-        lambda_val = 0  %small positive real value used to remove singularities in inverse Jacobian
+        lambda_val = 0.001  %small positive real value used to remove singularities in inverse Jacobian
         lambda_inv_J    %inverse Jacobian with symbolic lambda to quickly recalculate when lambda changes
         sym_lambda = sym('lambda');
     end
@@ -30,7 +31,11 @@ classdef Kin_Model
         end 
         
         function value = forward_kin(obj,q)
-            value = subs(obj.T(0,size(obj.DOF)),obj.q,q);
+            if nargin<2
+                value = obj.T(0,obj.n_frames);
+            else
+                value = subs(obj.T(0,obj.n_frames),obj.q,q);
+            end
         end
         
         function value = inv_kin(obj,H)
@@ -39,7 +44,7 @@ classdef Kin_Model
         
         function obj = set.lambda(obj,value)
             obj.lambda_val = value;
-            if obj.lambda_inv_J ~= double([])
+            if ~isempty(obj.lambda_inv_J)
                 obj.inv_J = simplify(vpa(subs(obj.lambda_inv_J,obj.sym_lambda,obj.lambda)));
             end
         end
@@ -52,7 +57,7 @@ classdef Kin_Model
         function obj = fromH_TransChain(varargin)
             obj = Kin_Model;
             obj = obj.init(size(varargin{1},1));
-            for i = 1:obj.DOF
+            for i = 1:obj.n_Frames
                 obj.T_matrices{i,i+1}=vpa(varargin{i});
             end
             obj=obj.calculateFromChain();
@@ -60,10 +65,15 @@ classdef Kin_Model
             obj=obj.calculatePesudoInvJacobian();
         end
         
-        function obj=fromDH(DH_Matrix)
+        function obj=fromDH(DH_Matrix,jointVars)
             obj = Kin_Model;
             obj = obj.init(size(DH_Matrix,1));
-            for i = 1:obj.DOF
+            if nargin<2
+                obj.q = sym('q',[obj.n_frames,1]);
+            else
+                obj.q = jointVars;
+            end
+            for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=simplify(vpa(H_Trans.fromDH(DH_Matrix(i,:)).H));
             end
             obj=obj.calculateFromChain();
@@ -71,14 +81,49 @@ classdef Kin_Model
             obj=obj.calculatePesudoInvJacobian();
         end
         
+        function obj=fromPrompt()
+            options.Interpreter = 'tex';
+            options.Resize = 'on';
+            dh_table = inputdlg('Enter the dh table for the robotic manipulator Use the following format: \theta, d, a, \alpha  \theta_1,d_1,a_1,\alpha_1; \theta_2,d_2,a_2,\alpha_2;                        ...','dh table',[3 50],{''},options);
+            dh_data = cellstr(dh_table{1, 1});
+
+            M = {};
+
+            for i = 1:size(dh_data,1)
+                M(i, 1:4) = strsplit(dh_data{i},',');
+            end
+
+            [h, w] = size(M);
+            DH = sym('DH',[h w]);
+            for r = 1:h
+                for c = 1:w
+                   DH(r,c) = sym(M{r,c});
+                end
+            end
+            
+            allvars = symvar(DH);
+            
+            arrayString=char(allvars);
+            arrayString([1:8,end-1:end]) = [];
+            cells=strsplit(arrayString(2:end-1),', ').';
+
+            [S,~] = listdlg('ListString',cells,'PromptString','Select Joint Variables');
+
+            if isempty(S)
+                jointVars=allvars;
+            else
+                jointVars=allvars(S);
+            end
+            
+            obj=Kin_Model.fromDH(DH,jointVars.');
+        end
     end
     
     methods(Access = private)
-        function obj = init(obj,size)
-            obj.DOF=size;
-            obj.q=sym('q',[1,obj.DOF]);
-            obj.T_matrices=cell(size+1,size+1);
-            for i = 1:size+1
+        function obj = init(obj,frames)
+            obj.n_frames=frames;
+            obj.T_matrices=cell(frames+1,frames+1);
+            for i = 1:frames+1
                 obj.T_matrices{i,i} = eye(4);
             end
         end
@@ -114,7 +159,8 @@ classdef Kin_Model
                 lambda = obj.lambda;
             end
             
-            obj.lambda_inv_J = simplify(vpa(obj.J.'/(obj.J*obj.J.' + (obj.sym_lambda^2).*eye(max(size(J))))));
+            obj.lambda_inv_J = simplify(vpa(obj.J.'/(obj.J*obj.J.' + (obj.sym_lambda^2).*eye(max(size(obj.J))))));
+            obj.inv_J0 = simplify(vpa(subs(obj.lambda_inv_J,obj.sym_lambda,0)));
             obj.lambda = lambda;
         end
     end
