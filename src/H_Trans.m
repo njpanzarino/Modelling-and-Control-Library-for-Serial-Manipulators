@@ -46,12 +46,6 @@ classdef H_Trans
 %             disp('Euler Not Implemented');
 %         end
         
-        function obj = inv(obj)
-			R=obj.Rot.';
-			obj.H = [ R  -R*obj.Trans
-					 0 0 0       1     ];
-		end
-        
         function value = getRotVel(obj,var)
            w=simplify(diff(obj.Rot,var)*obj.Rot.');
            value=[w(3,2);w(1,3);w(2,1)];
@@ -64,6 +58,12 @@ classdef H_Trans
                 value(4:6,i) = simplify(obj.getRotVel(q(i)));
             end 
         end
+        
+        function obj = inv(obj)
+			R=obj.Rot.';
+			obj.H = [ R  -R*obj.Trans
+					 0 0 0       1     ];
+		end
     end
     
     methods
