@@ -63,6 +63,23 @@ classdef H_Trans
             end 
         end
         
+        function func = getFunc(obj,vars,input)
+            if size(setdiff(symvar(obj.H),vars))>0
+                expr=simplify(vpa(obj.H));
+                if nargin>2
+                    func = @(q)simplify(vpa(subs(expr,vars,q)));
+                else
+                    func = @(q)simplify(vpa(subs(expr,vars,q)));
+                end
+            else
+                if nargin>2
+                    func = matlabFunction(obj.H,'Vars',input);
+                else
+                    func = matlabFunction(obj.H,'Vars',{vars});
+                end
+            end
+        end
+        
         function obj = inv(obj)
 			R=obj.Rot.';
 			obj.H = [ R  -R*obj.Trans

@@ -190,7 +190,7 @@ classdef Kin_Model
                        for i=r:(c-1)
                            temp=temp*obj.T_matrices{i,i+1};
                        end
-                       obj.T_matrices{r,c} = simplify(vpa(temp));
+                       obj.T_matrices{r,c} = vpa(temp);
                    end
                end
             end
@@ -198,7 +198,7 @@ classdef Kin_Model
             for r = 1:size(obj.T_matrices,1)
                for c = 1:size(obj.T_matrices,2) 
                    if c<r
-                       obj.T_matrices{r,c} = simplify(vpa(inv(obj.T_matrices{c,r})));
+                       obj.T_matrices{r,c} = H_Trans(obj.T_matrices{c,r}).inv;
                    end
                end
             end
