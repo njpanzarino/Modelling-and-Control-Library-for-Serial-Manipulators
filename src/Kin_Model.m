@@ -2,26 +2,29 @@ classdef Kin_Model
     %Kin_Model: Kinematic Model of a serial robot manipulator
     
     properties
-    
+		q_limit
     end
     
     properties(SetAccess = private)
         q
+        
         n_frames
-        J
-        inv_J
-        inv_J0
+        
     end
     
     properties(Access = private)
         T_matrices
-        lambda_val = 0.001  %small positive real value used to remove singularities in inverse Jacobian
-        lambda_inv_J    %inverse Jacobian with symbolic lambda to quickly recalculate when lambda changes
+        
         sym_lambda = sym('lambda');
+
+        f_kin_func
+        J_func
+        inv_JLambda_func
+        inv_J0_func
     end
     
     properties (Dependent)
-        lambda
+        
     end
     
     methods
@@ -30,27 +33,63 @@ classdef Kin_Model
             value = obj.T_matrices{from+1,to+1};
         end 
         
-        function value = forward_kin(obj,q)
+        function value = forward_kin(obj,q,useEuler)
             if nargin<2
-                value = obj.T(0,obj.n_frames);
+                q=obj.q;
+            end
+            if nargin<3
+                useEuler=false;
+            end
+            
+            if useEuler
+                T=obj.f_kin_func(q);
+                value=[T.Trans;T.Euler];
             else
-                value = subs(obj.T(0,obj.n_frames),obj.q,q);
+                value=obj.f_kin_func(q);
             end
         end
         
-        function value = inv_kin(obj,H)
-            error('function not implemented')
+        function value = inverse_kin(obj,H,q0)
+            if nargin<2
+                H=sym('H',4);
+            end
+            if nargin<3
+                q0=zeros(size(obj.q));
+            end
+            
+            options = optimoptions(@fsolve,'Display','iter',...
+                'Algorithm','trust-region-reflective',...
+                'Jacobian','off');
+            %baisc fsolve
+            [value,~]=fsolve(@(q)(obj.forward_kin(q)-H),q0,options);
+            
+            %Inverse Jacobian Method (Hill Climb)
+            
+            %Cyclic Coordinate Descent
+			%Simulated Annealing
+			%Map areas separated by singularities
+            
         end
         
-        function obj = set.lambda(obj,value)
-            obj.lambda_val = value;
-            if ~isempty(obj.lambda_inv_J)
-                obj.inv_J = simplify(vpa(subs(obj.lambda_inv_J,obj.sym_lambda,obj.lambda)));
+        function value = J(obj,q)
+            if nargin>1
+                value=obj.J_func(q);
+            elseif nargin>0
+                value=obj.J_func(obj.q);
             end
         end
-        function value = get.lambda(obj)
-            value = obj.lambda_val;
+        
+        function value = inv_J(obj,q,lambda)
+            switch nargin
+                case 1
+                    value=obj.inv_J0_func(obj.q);
+                case 2
+                    value=obj.inv_J0_func(q);
+                case 3
+                    value=obj.inv_JLambda_func(q,lambda);
+            end
         end
+        
     end
     
     methods(Static)
@@ -73,10 +112,13 @@ classdef Kin_Model
             else
                 obj.q = jointVars;
             end
+            assume(obj.q, 'real');
+            obj.q_limit=cell([size(obj.q,1),2]);
             for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=simplify(vpa(H_Trans.fromDH(DH_Matrix(i,:)).H));
             end
             obj=obj.calculateFromChain();
+            obj=obj.calculateForwardKinematics();
             obj=obj.calculateJacobian();
             obj=obj.calculatePesudoInvJacobian();
         end
@@ -117,6 +159,18 @@ classdef Kin_Model
             
             obj=Kin_Model.fromDH(DH,jointVars.');
         end
+        
+    end
+    
+    methods(Static,Access=private)
+        function f = funcFromSym(expr,vars)
+            if size(setdiff(symvar(expr),vars))>0
+                expr=simplify(vpa(expr));
+                f = @(q)simplify(vpa(subs(expr,vars,q)));
+            else
+                f = matlabFunction(expr,'Vars',{vars});
+            end
+        end
     end
     
     methods(Access = private)
@@ -150,19 +204,68 @@ classdef Kin_Model
             end
         end
         
-        function obj = calculateJacobian(obj)
-            obj.J=H_Trans(obj.T(0,size(obj.q))).getJacobian(obj.q);
+        function obj = calculateForwardKinematics(obj)
+            T=obj.T(0,obj.n_frames);
+            
+            obj.f_kin_func = Kin_Model.funcFromSym(T,obj.q);
         end
         
-        function obj = calculatePesudoInvJacobian(obj,lambda)
-            if nargin<2
-                lambda = obj.lambda;
-            end
-            
-            obj.lambda_inv_J = simplify(vpa(obj.J.'/(obj.J*obj.J.' + (obj.sym_lambda^2).*eye(max(size(obj.J))))));
-            obj.inv_J0 = simplify(vpa(subs(obj.lambda_inv_J,obj.sym_lambda,0)));
-            obj.lambda = lambda;
+        function obj = calculateJacobian(obj)
+            M=H_Trans(obj.T(0,size(obj.q))).getJacobian(obj.q);
+            obj.J_func=Kin_Model.funcFromSym(M,obj.q);
         end
+        
+        function obj = calculatePesudoInvJacobian(obj)
+            J=obj.J;
+
+            lambda_inv_J = J.'/(J*J.' + (obj.sym_lambda^2).*eye(max(size(J))));
+            if size(setdiff(symvar(lambda_inv_J),[obj.q;obj.sym_lambda]))>0
+                lambda_inv_J = simplify(vpa(lambda_inv_J));
+                obj.inv_JLambda_func = @(q,lambda)simplify(vpa(subs(lambda_inv_J,[obj.q;obj.sym_lambda],[q;lambda])));
+            else
+                obj.inv_JLambda_func = matlabFunction(lambda_inv_J,'Vars',{obj.q,obj.sym_lambda});
+            end
+                
+            inv_J0 = subs(lambda_inv_J,obj.sym_lambda,0);
+            obj.inv_J0_func=Kin_Model.funcFromSym(inv_J0,obj.q);
+        end
+        
+%         function obj = train_anfis(obj,n)
+%             disp('start training')
+%             obj.anfis_net=cell(size(obj.q));
+%             default_space=linspace(-pi,pi,n);
+%             
+%             input=cell(1,size(obj.q,1));
+%             
+%             for i=1:size(obj.q,1)
+%                 if isempty(obj.q_limit{i})
+%                     input{i}=default_space;
+%                 else
+%                     input{i}=linspace(obj.q_limit{i}(1),obj.q_limit{i}(2),n);
+%                 end
+%             end
+%             G=cell(1,size(obj.q,1));
+%             [G{:}]=ndgrid(input{:});
+%             
+%             all_H=obj.forward_kin(G.');
+%             s=size(all_H);
+%             r_sizes=ones(s(1)/4,1).*4;
+%             c_sizes=ones(s(2)/4,1).*4;
+%             all_H=mat2cell(all_H,r_sizes,c_sizes,ones(s(3),1));
+% %             num=numel(G{1});
+% %             for i=1:numel(G)
+% %                 G{i}=reshape(G{i},[num,1]);
+% %             end
+% %             
+% %             all_H=cell(numel(G{i}),1);
+% %             for i=1:num
+% %                 j=zeros(size(obj.q));
+% %                 for n=1:numel(j)
+% %                     j(n)=G{n}(i,1);
+% %                 end
+% %                 all_H{i}=obj.forward_kin(j);
+% %             end
+%         end
     end
     
 end
