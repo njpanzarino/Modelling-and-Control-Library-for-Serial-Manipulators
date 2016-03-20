@@ -74,7 +74,7 @@ classdef Kin_Model
         function value = J(obj,q)
             if nargin>1
                 value=obj.J_func(q);
-            elseif nargin>0
+            else
                 value=obj.J_func(obj.q);
             end
         end
@@ -107,6 +107,7 @@ classdef Kin_Model
         function obj=fromDH(DH_Matrix,jointVars)
             obj = Kin_Model;
             obj = obj.init(size(DH_Matrix,1));
+            jointVars=reshape(jointVars,numel(jointVars),1);
             if nargin<2
                 obj.q = sym('q',[obj.n_frames,1]);
             else
@@ -115,12 +116,12 @@ classdef Kin_Model
             assume(obj.q, 'real');
             obj.q_limit=cell([size(obj.q,1),2]);
             for i = 1:obj.n_frames
-                obj.T_matrices{i,i+1}=simplify(vpa(H_Trans.fromDH(DH_Matrix(i,:)).H));
+                obj.T_matrices{i,i+1}=H_Trans.fromDH(DH_Matrix(i,:));
             end
             obj=obj.calculateFromChain();
-            obj=obj.calculateForwardKinematics();
-            obj=obj.calculateJacobian();
-            obj=obj.calculatePesudoInvJacobian();
+            %obj=obj.calculateForwardKinematics();
+            %obj=obj.calculateJacobian();
+            %obj=obj.calculatePesudoInvJacobian();
         end
         
         function obj=fromPrompt()
@@ -162,23 +163,23 @@ classdef Kin_Model
         
     end
     
-    methods(Static,Access=private)
-        function f = funcFromSym(expr,vars)
-            if size(setdiff(symvar(expr),vars))>0
-                expr=simplify(vpa(expr));
-                f = @(q)simplify(vpa(subs(expr,vars,q)));
-            else
-                f = matlabFunction(expr,'Vars',{vars});
-            end
-        end
-    end
+%     methods(Static,Access=private)
+%         function f = funcFromSym(expr,vars)
+%             if size(setdiff(symvar(expr),vars))>0
+%                 expr=simplify(vpa(expr));
+%                 f = @(q)simplify(vpa(subs(expr,vars,q)));
+%             else
+%                 f = matlabFunction(expr,'Vars',{vars});
+%             end
+%         end
+%     end
     
     methods(Access = private)
         function obj = init(obj,frames)
             obj.n_frames=frames;
             obj.T_matrices=cell(frames+1,frames+1);
             for i = 1:frames+1
-                obj.T_matrices{i,i} = eye(4);
+                obj.T_matrices{i,i} = H_Trans();
             end
         end
         
@@ -188,9 +189,9 @@ classdef Kin_Model
                    if c>(r+1)
                        temp=eye(4);
                        for i=r:(c-1)
-                           temp=temp*obj.T_matrices{i,i+1};
+                           temp=temp*obj.T_matrices{i,i+1}.H;
                        end
-                       obj.T_matrices{r,c} = vpa(temp);
+                       obj.T_matrices{r,c} = H_Trans(vpa(temp));
                    end
                end
             end
@@ -198,7 +199,7 @@ classdef Kin_Model
             for r = 1:size(obj.T_matrices,1)
                for c = 1:size(obj.T_matrices,2) 
                    if c<r
-                       obj.T_matrices{r,c} = H_Trans(obj.T_matrices{c,r}).inv;
+                       obj.T_matrices{r,c} = obj.T_matrices{c,r}.inv;
                    end
                end
             end
@@ -206,28 +207,30 @@ classdef Kin_Model
         
         function obj = calculateForwardKinematics(obj)
             T=obj.T(0,obj.n_frames);
-            
-            obj.f_kin_func = Kin_Model.funcFromSym(T,obj.q);
+            obj.f_kin_func = T.getFunction(obj.q);
         end
         
         function obj = calculateJacobian(obj)
-            M=H_Trans(obj.T(0,size(obj.q))).getJacobian(obj.q);
-            obj.J_func=Kin_Model.funcFromSym(M,obj.q);
+            J=obj.T(0,obj.n_frames).getJacobian(obj.q);
+            obj.J_func=H_Trans.createFunction(J,obj.q);
         end
         
         function obj = calculatePesudoInvJacobian(obj)
             J=obj.J;
 
-            lambda_inv_J = J.'/(J*J.' + (obj.sym_lambda^2).*eye(max(size(J))));
-            if size(setdiff(symvar(lambda_inv_J),[obj.q;obj.sym_lambda]))>0
-                lambda_inv_J = simplify(vpa(lambda_inv_J));
-                obj.inv_JLambda_func = @(q,lambda)simplify(vpa(subs(lambda_inv_J,[obj.q;obj.sym_lambda],[q;lambda])));
-            else
-                obj.inv_JLambda_func = matlabFunction(lambda_inv_J,'Vars',{obj.q,obj.sym_lambda});
-            end
+            disp('invese');
+            lambda_inv_J = J.'/(J*J.' + (obj.sym_lambda^2).*eye(size(J,1)));
+            
+            obj.inv_JLambda_func = H_Trans.createFunction(lambda_inv_J,{obj.q,sym('lambda')});
+%             if size(setdiff(symvar(lambda_inv_J),[obj.q;obj.sym_lambda]))>0
+%                 lambda_inv_J = simplify(vpa(lambda_inv_J));
+%                 obj.inv_JLambda_func = @(q,lambda)simplify(vpa(subs(lambda_inv_J,[obj.q;obj.sym_lambda],[q;lambda])));
+%             else
+%                 obj.inv_JLambda_func = matlabFunction(lambda_inv_J,'Vars',{obj.q,obj.sym_lambda});
+%             end
                 
-            inv_J0 = subs(lambda_inv_J,obj.sym_lambda,0);
-            obj.inv_J0_func=Kin_Model.funcFromSym(inv_J0,obj.q);
+            inv_J0 = vpa(subs(lambda_inv_J,obj.sym_lambda,0));
+            obj.inv_J0_func=H_Trans.createFunction(inv_J0,obj.q);
         end
         
 %         function obj = train_anfis(obj,n)
