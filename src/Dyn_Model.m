@@ -18,9 +18,9 @@ classdef Dyn_Model
         k %stiffness for each joint 
         b %damping for each joint
         
-        M %Inertia Matrix  :  M(q)
-        V %Coriolis Vector :  V(q,d_q)
-        G %Gravity Vector  :  G(q)
+        sym_M %Inertia Matrix  :  M(q)
+        sym_V %Coriolis Vector :  V(q,d_q)
+        sym_G %Gravity Vector  :  G(q)
     end
     
     properties(Dependent, SetAccess=private)
@@ -44,7 +44,6 @@ classdef Dyn_Model
         val_d_q_t  
         val_dd_q_t 
     end
-    
     
     methods
         function obj = Dyn_Model(model)
@@ -110,13 +109,48 @@ classdef Dyn_Model
                 
             end
         end
+        function obj = clear(obj)
+            obj=obj.clearMass;
+            obj=obj.clearI;
+        end
         
         function val=tau(obj,q,d_q,dd_q)
-            if nargin<4
-                dd_q=zeros(size(obj.q));
-            end
+            val=zeros(size(obj.q));
+            
             if nargin<3
                 d_q=zeros(size(obj.q));
+            end
+            if nargin<4
+                dd_q=zeros(size(obj.q));
+            else
+                val=val+obj.M(q)*dd_q;
+            end
+            
+            val=val+obj.V(q,d_q)+obj.G(q)+obj.b.*d_q;
+            val=vpa(val);
+        end
+        
+        function val = M(obj,q)
+            if nargin<2
+                val=obj.sym_M;
+            else
+                val=subs(obj.sym_M,obj.q,q);
+            end
+        end
+        function val = V(obj,q,d_q)
+            if nargin<2
+                val=obj.sym_V;
+            elseif nargin<3
+                val=subs(obj.sym_V,[obj.q,obj.d_q],[q,zeros(size(obj.d_q))]);
+            else
+                val=subs(obj.sym_V,[obj.q,obj.d_q],[q,d_q]);
+            end
+        end
+        function val = G(obj,q)
+            if nargin<2
+                val=obj.sym_G;
+            else
+                val=subs(obj.sym_G,obj.q,q);
             end
         end
         
@@ -183,6 +217,15 @@ classdef Dyn_Model
             E_L=vpa(E_L);
             
             %Just get the matrices and done
+            obj.sym_G=subs(E_L,[obj.dd_q,obj.d_q],[zeros(size(obj.dd_q)),zeros(size(obj.d_q))]);
+            obj.sym_V=subs(E_L,obj.dd_q,zeros(size(obj.dd_q)))-obj.sym_G;
+            
+            obj.sym_M=E_L-obj.sym_V-obj.sym_G;
+            [obj.sym_M,~]=equationsToMatrix(obj.sym_M,obj.dd_q);
+            
+            obj.sym_G=simplify(obj.sym_G);
+            obj.sym_V=simplify(obj.sym_V);
+
         end
     end
     
@@ -233,6 +276,9 @@ classdef Dyn_Model
             obj = Dyn_Model;
 			obj.kin=model;
             obj.q=obj.kin.q;
+            
+            obj.b=zeros(size(obj.q));
+            
         end
     end
     
