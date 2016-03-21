@@ -137,7 +137,7 @@ classdef H_Trans
             end
             vars=extractVars(input);
             
-            if size(setdiff(symvar(expr),vars))>0
+            if size(setdiff(symvar(expr),symvar(vars)))>0
                 expr=vpa(expr);
                 func = @(q)simplify(vpa(subs(expr,vars,extractVars(q))));
             else
