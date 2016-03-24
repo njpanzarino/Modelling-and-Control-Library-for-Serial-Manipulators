@@ -86,7 +86,11 @@ classdef Kin_Model
                 case 2
                     value=obj.inv_J0_func(q);
                 case 3
-                    value=obj.inv_JLambda_func(q,lambda);
+                    if lamda<=0
+                        value=obj.inv_J0_func(q);
+                    else
+                        value=obj.inv_JLambda_func(q,lambda);
+                    end
             end
         end
         

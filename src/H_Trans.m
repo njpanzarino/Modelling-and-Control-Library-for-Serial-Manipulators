@@ -139,7 +139,7 @@ classdef H_Trans
             
             if size(setdiff(symvar(expr),symvar(vars)))>0
                 expr=vpa(expr);
-                func = @(q)simplify(vpa(subs(expr,vars,extractVars(q))));
+                func = @(q)vpa(subs(expr,vars,extractVars(q)));
             else
                 if iscell(input)
                     func = matlabFunction(expr,'Vars',input);

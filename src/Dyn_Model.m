@@ -18,9 +18,21 @@ classdef Dyn_Model
         k %stiffness for each joint 
         b %damping for each joint
         
+        tau
+        
         sym_M %Inertia Matrix  :  M(q)
         sym_V %Coriolis Vector :  V(q,d_q)
         sym_G %Gravity Vector  :  G(q)
+        
+        sym_invM %M^-1
+        
+        func_M
+        func_V
+        func_G
+        func_invM
+        
+        func_fDyn
+        func_iDyn
     end
     
     properties(Dependent, SetAccess=private)
@@ -114,49 +126,121 @@ classdef Dyn_Model
             obj=obj.clearI;
         end
         
-        function val=tau(obj,q,d_q,dd_q)
-            val=zeros(size(obj.q));
-            
-            if nargin<3
-                d_q=zeros(size(obj.q));
+        function val=inverse_dyn(obj,q,d_q,dd_q)
+            switch nargin
+                case 1
+                    val=obj.func_iDyn(obj.q,obj.d_q,obj.dd_q);
+                case 2
+                    val=obj.func_iDyn(q,zeros(size(obj.d_q)),zeros(size(obj.dd_q)));
+                case 3
+                    val=obj.func_iDyn(q,d_q,zeros(size(obj.dd_q)));
+                case 4
+                    val=obj.func_iDyn(q,d_q,dd_q);
             end
-            if nargin<4
-                dd_q=zeros(size(obj.q));
-            else
-                val=val+obj.M(q)*dd_q;
+%             val=zeros(size(obj.q));
+%             
+%             if nargin<3
+%                 d_q=zeros(size(obj.q));
+%             end
+%             if nargin<4
+%                 dd_q=zeros(size(obj.q));
+%             else
+%                 val=val+obj.M(q)*dd_q;
+%             end
+%             
+%             val=val+obj.V(q,d_q)+obj.G(q)+obj.b.*d_q;
+%             val=vpa(val);
+        end
+        function dd_q=forward_dyn(obj,q,d_q,tau)
+            switch nargin
+                case 1
+                    dd_q=obj.func_fDyn(obj.q,obj.d_q,obj.tau);
+                case 2
+                    dd_q=obj.func_fDyn(q,zeros(size(obj.d_q)),zeros(size(obj.tau)));
+                case 3
+                    dd_q=obj.func_fDyn(q,d_q,zeros(size(obj.tau)));
+                case 4
+                    dd_q=obj.func_fDyn(q,d_q,tau);
             end
             
-            val=val+obj.V(q,d_q)+obj.G(q)+obj.b.*d_q;
-            val=vpa(val);
+%             if nargin<3
+%                 d_q=zeros(size(obj.q));
+%             end
+%             if nargin<4
+%                 tau=zeros(size(obj.q));
+%             end
+%             
+%             dd_q=obj.invM(q)*(tau-obj.V(q,d_q)-obj.G(q)-obj.b.*d_q);
+%             dd_q=vpa(dd_q);
         end
         
+%         function val = M(obj,q)
+%             if nargin<2
+%                 val=obj.sym_M;
+%             else
+%                 val=subs(obj.sym_M,obj.q,q);
+%             end
+%         end
+%         function val = V(obj,q,d_q)
+%             if nargin<2
+%                 val=obj.sym_V;
+%             elseif nargin<3
+%                 val=subs(obj.sym_V,[obj.q,obj.d_q],[q,zeros(size(obj.d_q))]);
+%             else
+%                 val=subs(obj.sym_V,[obj.q,obj.d_q],[q,d_q]);
+%             end
+%         end
+%         function val = G(obj,q)
+%             if nargin<2
+%                 val=obj.sym_G;
+%             else
+%                 val=subs(obj.sym_G,obj.q,q);
+%             end
+%         end
+%         
+%         function val = invM(obj,q)
+%             if nargin<2
+%                 val=obj.sym_invM;
+%             else
+%                 val=subs(obj.sym_invM,obj.q,q);
+%             end
+%         end
+
         function val = M(obj,q)
             if nargin<2
                 val=obj.sym_M;
             else
-                val=subs(obj.sym_M,obj.q,q);
+                val=obj.func_M(q);
             end
         end
         function val = V(obj,q,d_q)
             if nargin<2
                 val=obj.sym_V;
             elseif nargin<3
-                val=subs(obj.sym_V,[obj.q,obj.d_q],[q,zeros(size(obj.d_q))]);
+                val=obj.func_V(q,obj.d_q);
             else
-                val=subs(obj.sym_V,[obj.q,obj.d_q],[q,d_q]);
+                val=obj.func_V(q,d_q);
             end
         end
         function val = G(obj,q)
             if nargin<2
                 val=obj.sym_G;
             else
-                val=subs(obj.sym_G,obj.q,q);
+                val=obj.func_G(q);
+            end
+        end
+        
+        function val = invM(obj,q)
+            if nargin<2
+                val=obj.sym_invM;
+            else
+                val=obj.func_invM(q);
             end
         end
         
         function obj = calculateDynamics(obj)
             temp=cell(size(obj.Mass,2),1);
-            K=0;P=0;
+            K=0;
             
             if size(obj.Mass,2)>0
                 
@@ -174,7 +258,7 @@ classdef Dyn_Model
             
                 v=obj.diff(x);
             
-                Km=(1/2).*m.'*v^2;
+                Km=(1/2).*m.'*dot(v,v,2);
                 K=K+sum(Km);
             end
             
@@ -223,9 +307,20 @@ classdef Dyn_Model
             obj.sym_M=E_L-obj.sym_V-obj.sym_G;
             [obj.sym_M,~]=equationsToMatrix(obj.sym_M,obj.dd_q);
             
+            obj.sym_invM=inv(obj.sym_M);
+            
             obj.sym_G=simplify(obj.sym_G);
             obj.sym_V=simplify(obj.sym_V);
 
+            obj.func_M=H_Trans.createFunction(obj.sym_M,obj.q);
+            obj.func_V=H_Trans.createFunction(obj.sym_V,{obj.q,obj.d_q});
+            obj.func_G=H_Trans.createFunction(obj.sym_G,obj.q);
+            obj.func_invM=H_Trans.createFunction(obj.sym_invM,obj.q);
+            
+            obj.func_iDyn=matlabFunction(E_L+obj.b.*obj.d_q,...
+                'Vars',{obj.q,obj.d_q,obj.dd_q});
+            obj.func_fDyn=matlabFunction(obj.invM*(obj.tau-obj.V-obj.G-obj.b.*obj.d_q),...
+                'Vars',{obj.q,obj.d_q,obj.tau});
         end
     end
     
@@ -276,6 +371,7 @@ classdef Dyn_Model
             obj = Dyn_Model;
 			obj.kin=model;
             obj.q=obj.kin.q;
+            obj.tau=sym('tau',size(obj.q));
             
             obj.b=zeros(size(obj.q));
             
