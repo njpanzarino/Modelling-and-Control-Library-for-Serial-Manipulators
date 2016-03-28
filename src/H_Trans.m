@@ -1,6 +1,5 @@
 classdef H_Trans
-    %H_Trans Provides helpful methods for creating and decomposing
-    %Homogeneous Transformation matrices
+    %H_Trans Provides helpful methods for creating and decomposing Homogeneous Transformation matrices
     %   Detailed explanation goes here
     
     properties
@@ -92,6 +91,63 @@ classdef H_Trans
             a=a.inv();
             c=H_Trans(mtimes(a.H,b.H));
         end
+        
+        function draw(obj,scale,label,ax,plotArgs)
+            
+            if nargin<2 || isempty(scale)
+                scale=1;
+            end
+            
+            if nargin<4 || isempty(ax)
+                ax=gca;
+            end
+            
+            if nargin<5 || isempty(plotArgs)
+                plotArgs={};
+            end
+            
+            p=double(obj.Trans);
+            r=double(obj.Rot);
+            
+            plot3(p(1), p(2), p(3));
+  
+            hchek = ishold;
+            hold on
+
+            if (isequal(zeros(3,1), p)) && (isequal(eye(3),r)),
+            % use gray for the base frame
+%                 plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'Color','k','linewidth',2,plotArgs{:});
+%                 plot3(ax,[p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'Color','k','linewidth',2,plotArgs{:});
+%                 plot3(ax,[p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'Color','k','linewidth',2,plotArgs{:});
+
+                h=plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'k',...
+                    [p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'k',...
+                    [p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'k',plotArgs{:});
+            else    
+%                 plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'Color','r','linewidth',2,plotArgs{:});
+%                 plot3(ax,[p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'Color','g','linewidth',2,plotArgs{:});
+%                 plot3(ax,[p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'Color','b','linewidth',2,plotArgs{:});
+
+                 h=plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'r',...
+                    [p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'g',...
+                    [p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'b',plotArgs{:});
+            end
+
+            if nargin>2&&~isempty(label)
+                t=text(p(1)-sum(r(1,:))*0.05,p(2)-sum(r(2,:))*0.07,p(3)-sum(r(3,:))*0.07,strcat('F',label));
+                t.Parent=ax;
+                t=text(p(1)+scale*r(1,1)+sum(r(1,:))*0.02,p(2)+scale*r(2,1)+sum(r(2,:))*0.05,p(3)+scale*r(3,1)+sum(r(3,:))*0.05,strcat('x',label));
+                t.Parent=ax;
+                t=text(p(1)+scale*r(1,2)+sum(r(1,:))*0.02,p(2)+scale*r(2,2)+sum(r(2,:))*0.05,p(3)+scale*r(3,2)+sum(r(3,:))*0.05,strcat('y',label));
+                t.Parent=ax;
+                t=text(p(1)+scale*r(1,3)+sum(r(1,:))*0.02,p(2)+scale*r(2,3)+sum(r(2,:))*0.05,p(3)+scale*r(3,3)+sum(r(3,:))*0.05,strcat('z',label));
+                t.Parent=ax;
+            end
+
+            if hchek == 0
+                hold off
+            end
+        end
     end
     
     methods(Static)
@@ -139,7 +195,7 @@ classdef H_Trans
             
             if size(setdiff(symvar(expr),symvar(vars)))>0
                 expr=vpa(expr);
-                func = @(q)vpa(subs(expr,vars,extractVars(q)));
+                func = @(varargin)vpa(subs(expr,vars,extractVars(varargin)));
             else
                 if iscell(input)
                     func = matlabFunction(expr,'Vars',input);
@@ -161,14 +217,17 @@ classdef H_Trans
         end
         
         function M = single( input_args )
-        M=sym(eye(4));
+        
             if isequal(size(input_args),[4,4]),
                 M = input_args;
-			elseif isequal(size(input_args),[3,3]),
+			elseif isequal(size(input_args),[3,3])
+                M=sym(eye(4));
                 M(1:3,1:3) = input_args(1:3,1:3);
-			elseif isequal(size(input_args),[1,3]),
+			elseif isequal(size(input_args),[1,3])
+                M=sym(eye(4));
                 M(1:3,4) = input_args(1,:);
-            elseif isequal(size(input_args),[3,1]),
+            elseif isequal(size(input_args),[3,1])
+                M=sym(eye(4));
                 M(1:3,4) = input_args(:,1).';
             end
         end

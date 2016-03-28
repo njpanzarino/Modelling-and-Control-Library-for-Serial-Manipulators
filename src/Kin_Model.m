@@ -21,6 +21,9 @@ classdef Kin_Model
         J_func
         inv_JLambda_func
         inv_J0_func
+        
+        points_func
+        trans_func
     end
     
     properties (Dependent)
@@ -94,18 +97,97 @@ classdef Kin_Model
             end
         end
         
+        function draw(obj,q,drawFrames,ax,plotArgs)
+            if nargin<2 || isempty(q)
+                q=zeros(size(obj.q));
+            end
+            
+            if nargin<3 || isempty(drawFrames)
+                drawFrames=0;
+            end
+            
+            if nargin<4 || isempty(ax)
+                ax=gca;
+            end
+            
+            if nargin<5 || isempty(plotArgs)
+                plotArgs={};
+            end
+            
+            if isempty(obj.trans_func)
+                obj=obj.calculatePlot();
+            end
+            
+            h=obj.trans_func(q);
+            p=reshape(h(1:3,4,:),3,[]);
+            scale=norm(p);
+            
+            plot3(ax,p(1,:),p(2,:),p(3,:),plotArgs{:});
+            
+            scale=scale/8;
+                
+            hchek = ishold;
+            hold on
+                
+            H_Trans(h(:,:,1)).draw(scale,'0',ax);
+            
+            if drawFrames>0
+                for i=1:obj.n_frames
+                    if drawFrames>1
+                        H_Trans(h(:,:,i+1)).draw(scale,num2str(i),ax);
+                    else
+                        H_Trans(h(:,:,i+1)).draw(scale,[],ax);
+                    end
+                end
+            else
+                h=plot3(ax,p(1,:),p(2,:),p(3,:),'.k',plotArgs{:});
+                h.MarkerSize=h.MarkerSize+h.LineWidth*2;
+            end
+            
+            if hchek == 0
+                hold off
+            end
+            minLim=min([ax.XLim(1),ax.YLim(1),ax.ZLim(1)]);
+            maxLim=max([ax.XLim(2),ax.YLim(2),ax.ZLim(2)]);
+            ax.XLim=[minLim,maxLim];
+            ax.YLim=[minLim,maxLim];
+            ax.ZLim=[minLim,maxLim];
+        end
+        
+        function simulate(obj,q,drawFrames,ax,plotArgs)
+            if nargin<2 || isempty(q)
+                q=zeros(size(obj.q));
+            end
+            
+            if nargin<3 || isempty(drawFrames)
+                drawFrames=0;
+            end
+            
+            if nargin<4 || isempty(ax)
+                ax=gca;
+            end
+            
+            if nargin<5 || isempty(plotArgs)
+                plotArgs={};
+            end
+            
+            n=size(q,2);
+            if drawFrames>0
+                p=0.01;
+            else
+                p=0.0001;
+            end    
+            
+            for i=1:n
+                obj.draw(q(:,i),drawFrames,ax,plotArgs);
+                pause(p);
+            end
+        end
     end
     
     methods(Static)
         function obj = fromH_TransChain(varargin)
-            obj = Kin_Model;
-            obj = obj.init(size(varargin{1},1));
-            for i = 1:obj.n_Frames
-                obj.T_matrices{i,i+1}=vpa(varargin{i});
-            end
-            obj=obj.calculateFromChain();
-            obj=obj.calculateJacobian();
-            obj=obj.calculatePesudoInvJacobian();
+            
         end
         
         function obj=fromDH(DH_Matrix,jointVars)
@@ -123,6 +205,7 @@ classdef Kin_Model
                 obj.T_matrices{i,i+1}=H_Trans.fromDH(DH_Matrix(i,:));
             end
             obj=obj.calculateFromChain();
+            obj=obj.calculatePlot();
             obj=obj.calculateForwardKinematics();
             obj=obj.calculateJacobian();
             obj=obj.calculatePesudoInvJacobian();
@@ -167,17 +250,6 @@ classdef Kin_Model
         
     end
     
-%     methods(Static,Access=private)
-%         function f = funcFromSym(expr,vars)
-%             if size(setdiff(symvar(expr),vars))>0
-%                 expr=simplify(vpa(expr));
-%                 f = @(q)simplify(vpa(subs(expr,vars,q)));
-%             else
-%                 f = matlabFunction(expr,'Vars',{vars});
-%             end
-%         end
-%     end
-    
     methods(Access = private)
         function obj = init(obj,frames)
             obj.n_frames=frames;
@@ -209,6 +281,17 @@ classdef Kin_Model
             end
         end
         
+        function obj = calculatePlot(obj)
+            h=sym(zeros(4,4,obj.n_frames));
+            frames=cell(obj.n_frames,1);
+            
+            for i=0:obj.n_frames
+                frames{i+1}=obj.T(0,i);
+                h(:,:,i+1)=frames{i+1}.H;
+            end
+            obj.trans_func=H_Trans.createFunction(h,obj.q);
+        end
+        
         function obj = calculateForwardKinematics(obj)
             T=obj.T(0,obj.n_frames);
             obj.f_kin_func = T.getFunction(obj.q);
@@ -225,53 +308,11 @@ classdef Kin_Model
             lambda_inv_J = J.'/(J*J.' + (obj.sym_lambda^2).*eye(size(J,1)));
             
             obj.inv_JLambda_func = H_Trans.createFunction(lambda_inv_J,{obj.q,sym('lambda')});
-%             if size(setdiff(symvar(lambda_inv_J),[obj.q;obj.sym_lambda]))>0
-%                 lambda_inv_J = simplify(vpa(lambda_inv_J));
-%                 obj.inv_JLambda_func = @(q,lambda)simplify(vpa(subs(lambda_inv_J,[obj.q;obj.sym_lambda],[q;lambda])));
-%             else
-%                 obj.inv_JLambda_func = matlabFunction(lambda_inv_J,'Vars',{obj.q,obj.sym_lambda});
-%             end
                 
             inv_J0 = vpa(subs(lambda_inv_J,obj.sym_lambda,0));
             obj.inv_J0_func=H_Trans.createFunction(inv_J0,obj.q);
         end
         
-%         function obj = train_anfis(obj,n)
-%             disp('start training')
-%             obj.anfis_net=cell(size(obj.q));
-%             default_space=linspace(-pi,pi,n);
-%             
-%             input=cell(1,size(obj.q,1));
-%             
-%             for i=1:size(obj.q,1)
-%                 if isempty(obj.q_limit{i})
-%                     input{i}=default_space;
-%                 else
-%                     input{i}=linspace(obj.q_limit{i}(1),obj.q_limit{i}(2),n);
-%                 end
-%             end
-%             G=cell(1,size(obj.q,1));
-%             [G{:}]=ndgrid(input{:});
-%             
-%             all_H=obj.forward_kin(G.');
-%             s=size(all_H);
-%             r_sizes=ones(s(1)/4,1).*4;
-%             c_sizes=ones(s(2)/4,1).*4;
-%             all_H=mat2cell(all_H,r_sizes,c_sizes,ones(s(3),1));
-% %             num=numel(G{1});
-% %             for i=1:numel(G)
-% %                 G{i}=reshape(G{i},[num,1]);
-% %             end
-% %             
-% %             all_H=cell(numel(G{i}),1);
-% %             for i=1:num
-% %                 j=zeros(size(obj.q));
-% %                 for n=1:numel(j)
-% %                     j(n)=G{n}(i,1);
-% %                 end
-% %                 all_H{i}=obj.forward_kin(j);
-% %             end
-%         end
     end
     
 end

@@ -1,17 +1,20 @@
 close all; clear all; clc;
 
+%% Modelling
+
 %model=Kin_Model.fromPrompt()
 
-q=sym('q',[2,1]);
-d=sym('d',[3,1]);
+q=sym('q',[2,1],'real');
+d=sym('d',[3,1],'real');
 kin=Kin_Model.fromDH([%q(1),3,0,pi/2;
                       q(1),0,1,0;
                       q(2),0,1,0],q);
 
-% kin.q
-
-% H1= kin.forward_kin([.1;.1;.1]);
-% H2= kin.forward_kin([pi/3;pi/4;-pi/3]);
+% a1=linspace(0,pi/3,100);
+% a2=linspace(0,-pi/3,100);
+% a=[a1;a2];
+% 
+% kin.simulate(a,0,[],{'linewidth',2});
 
 model=Dyn_Model(kin);
 
@@ -23,16 +26,18 @@ model.g_dir=[0;-1;0];
 
 model = model.calculateDynamics();
 
-syms t;
+%% Simulation
 
-d_q = [0.2;sin(2*t)];
-Kp=10*ones(size(d_q));
-Kv=10*ones(size(d_q));
+t=model.t;
+
+q_d = [0.2;sin(2*t)];
+Kp=10*ones(size(q_d));
+Kv=10*ones(size(q_d));
 
 x0=[[-0.5;0.2],[0.1;0.1]];
 options = odeset('RelTol',1e-4,'AbsTol',[1e-4, 1e-4, 1e-4, 1e-4]);
 
-[ode,getTorques]=ModelODE(model,t,d_q,'ComputedTorque',{model,Kp,Kv});
+[ode,getTorques]=ModelODE(model,q_d,'ComputedTorque',{model,Kp,Kv});
 
 disp('Beginning Simulation');
 
@@ -41,9 +46,12 @@ disp('Beginning Simulation');
 
 disp('Simulation Complete');
 
+a=[Y(:,1),Y(:,2)].';
+kin.simulate(a,0,[],{'linewidth',2});
+
 plot(T, Y(:,1),'r-');
 hold on
-plot(T, d_q(1)*ones(size(T,1),1),'b-');
+plot(T, q_d(1)*ones(size(T,1),1),'b-');
 figure('Name','Theta_2 under Computed Torque Control');
 plot(T, Y(:,2),'r--');
 hold on

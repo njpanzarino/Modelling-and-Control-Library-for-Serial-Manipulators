@@ -4,7 +4,7 @@ classdef Dyn_Model
     %   Detailed explanation goes here
     
     properties
-        g_value=9.81;
+        g_val=9.81;
         g_dir=[0,0,-1];
     end
     
@@ -19,6 +19,8 @@ classdef Dyn_Model
         b %damping for each joint
         
         tau
+        
+        t=sym('t');
         
         sym_M %Inertia Matrix  :  M(q)
         sym_V %Coriolis Vector :  V(q,d_q)
@@ -49,8 +51,6 @@ classdef Dyn_Model
         val_q    %joint variables
         val_d_q  %1st time derivative of joint variables
         val_dd_q %2nd time derivative of joint variables
-
-        t=sym('t');
         
         val_q_t    
         val_d_q_t  
@@ -90,7 +90,7 @@ classdef Dyn_Model
         function obj = addI(obj,value,rot,frame)
             if ~isequal(size(value),[3,3])
                 v=value;
-                value=zeros(3,3);
+                value=sym(zeros(3,3));
                 value(3,3)=v;
             end
             
@@ -239,10 +239,10 @@ classdef Dyn_Model
         end
         
         function obj = calculateDynamics(obj)
-            temp=cell(size(obj.Mass,2),1);
             K=0;
             
             if size(obj.Mass,2)>0
+                temp=cell(size(obj.Mass,2),1);
                 
                 [temp{:}]=obj.Mass.loc;
                 x=sym(zeros(size(obj.Mass,2),size(temp{1},1)));
@@ -256,6 +256,7 @@ classdef Dyn_Model
                     m(i)=temp{i};
                 end
             
+                %Can replace this with Jacobian calculation?
                 v=obj.diff(x);
             
                 Km=(1/2).*m.'*dot(v,v,2);
@@ -263,6 +264,8 @@ classdef Dyn_Model
             end
             
             if size(obj.I,2)>0
+                temp=cell(size(obj.I,2),1);
+                
                 [temp{:}]=obj.I.val;
                 I=temp;
                 [temp{:}]=obj.I.loc;
@@ -270,6 +273,7 @@ classdef Dyn_Model
 
                 w=sym(zeros(size(obj.I,2),3));
                 for i=1:numel(temp)
+                    %Can replace this with Jacobian calculation?
                     w(i,:)=obj.subsQ(H_Trans(obj.subsT(r{i})).getRotVel(obj.t)).';
                 end
 
@@ -280,7 +284,7 @@ classdef Dyn_Model
                 
                 Kr=sym(zeros(size(obj.I,2),1));
                 for i=1:size(obj.I,2)
-                    Kr(1)=w(i,:)*It{i}*w(i,:).';
+                    Kr(i)=w(i,:)*It{i}*w(i,:).';
                 end
                 Kr=(1/2).*Kr;
                 K=K+sum(Kr);
@@ -290,7 +294,7 @@ classdef Dyn_Model
             g=repmat(-obj.g_dir,size(x,1),1);
             h=dot(x,g,2);
             
-            P=obj.g_value.*m.*h;
+            P=obj.g_val.*m.*h;
             P=sum(P);
             
             L=K-P;
@@ -298,7 +302,7 @@ classdef Dyn_Model
             for i=1:numel(obj.q)
                 E_L(i)=obj.diff(diff(L,obj.d_q(i)))-diff(L,obj.q(i));
             end
-            E_L=vpa(E_L);
+            E_L=simplify(vpa(E_L));
             
             %Just get the matrices and done
             obj.sym_G=subs(E_L,[obj.dd_q,obj.d_q],[zeros(size(obj.dd_q)),zeros(size(obj.d_q))]);
@@ -317,10 +321,10 @@ classdef Dyn_Model
             obj.func_G=H_Trans.createFunction(obj.sym_G,obj.q);
             obj.func_invM=H_Trans.createFunction(obj.sym_invM,obj.q);
             
-            obj.func_iDyn=matlabFunction(E_L+obj.b.*obj.d_q,...
-                'Vars',{obj.q,obj.d_q,obj.dd_q});
-            obj.func_fDyn=matlabFunction(obj.invM*(obj.tau-obj.V-obj.G-obj.b.*obj.d_q),...
-                'Vars',{obj.q,obj.d_q,obj.tau});
+            obj.func_iDyn=H_Trans.createFunction(E_L+obj.b.*obj.d_q,...
+                {obj.q,obj.d_q,obj.dd_q});
+            obj.func_fDyn=H_Trans.createFunction(obj.invM*(obj.tau-obj.V-obj.G-obj.b.*obj.d_q),...
+                {obj.q,obj.d_q,obj.tau});
         end
     end
     
@@ -337,10 +341,10 @@ classdef Dyn_Model
             obj.val_dd_q_t=sym('dd_q_t',n);
             
             for i=1:n
-                obj.val_d_q(i)=sym(strcat('d_',char(q(i))));
-                obj.val_dd_q(i)=sym(strcat('dd_',char(q(i))));
+                obj.val_d_q(i)=sym(strcat('d_',char(q(i))),'real');
+                obj.val_dd_q(i)=sym(strcat('dd_',char(q(i))),'real');
                 
-                obj.val_q_t(i) = sym(strcat(char(q(i)),'(',char(obj.t),')'));
+                obj.val_q_t(i) = sym(strcat(char(q(i)),'(',char(obj.t),')'),'real');
                 obj.val_d_q_t(i) = diff(obj.val_q_t(i),obj.t);
                 obj.val_dd_q_t(i) = diff(obj.val_q_t(i),obj.t,2);
             end

@@ -1,10 +1,10 @@
-function [ ode_func, tau_func ] = ModelODE(model,sym_t,sym_x, type, args)
+function [ ode_func, tau_func ] = ModelODE(model,sym_x, type, args)
 %ModelODE Summary of this function goes here
 %   Detailed explanation goes here
 
     desired_t(:,1)=sym_x;
-    desired_t(:,2)=diff(sym_x,sym_t);
-    desired_t(:,3)=diff(desired_t(:,2),sym_t);
+    desired_t(:,2)=diff(sym_x,model.t);
+    desired_t(:,3)=diff(desired_t(:,2),model.t);
     
     func_x=matlabFunction(desired_t);
     
