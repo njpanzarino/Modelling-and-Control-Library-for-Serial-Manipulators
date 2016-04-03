@@ -34,6 +34,45 @@ classdef Controller
             end
         end
 
+        function tau = PID(Kp,Ki,Kd)
+
+            sum=zeros(size(Kp));
+            tau = @PID;
+
+            function tau = PID(desired,actual)
+                q=actual(:,1);
+                d_q=actual(:,2);
+
+                q_d=desired(:,1);
+                d_q_d=desired(:,2);
+
+                e1=q-q_d;
+                e2=d_q-d_q_d;
+                
+                sum=sum+e1;
+
+                tau=Kp.*e1+Kd.*e2+Ki.*sum;
+            end
+        end
+        
+        function tau = PI(Kp,Ki)
+
+            sum=zeros(size(Kp));
+            tau = @PI;
+
+            function tau = PI(desired,actual)
+                q=actual(:,1);
+
+                q_d=desired(:,1);
+
+                e1=q-q_d;
+                
+                sum=sum+e1;
+
+                tau=Kp.*e1+Ki.*sum;
+            end
+        end
+        
         function tau = PD(Kp,Kd)
 
             tau = @PD;

@@ -22,7 +22,6 @@ classdef Kin_Model
         inv_JLambda_func
         inv_J0_func
         
-        points_func
         trans_func
     end
     
@@ -205,13 +204,13 @@ classdef Kin_Model
                 viewArgs=[];
             end
             
-            n=size(q,2);
             if drawFrames>0
                 p=0.01;
             else
                 p=0.0001;
             end
             
+            n=size(q,2);
             for i=1:n
                 obj.draw(q(:,i),drawFrames,ax,plotArgs,viewArgs);
                 pause(p);

@@ -299,22 +299,13 @@ classdef Dyn_Model
                 {obj.q,obj.d_q,obj.tau});
         end
         
-        function [ode_func,d_func] = ODE(obj,sym_q,c_func,noise_func)
+        function [ode_func,d_func] = ODE(obj,d_func,c_func,n_func)
             n=nargin;
             if n<4
-                noise_func=[];
+                n_func=[];
             end
             
-            d_func=desired;
-            ode_func=CreateODE(d_func,control,@response,noise_func);
-
-            function d=desired
-                desired_t(:,1)=sym_q;
-                desired_t(:,2)=diff(sym_q,obj.t);
-                desired_t(:,3)=diff(desired_t(:,2),obj.t);
-
-                d=matlabFunction(desired_t,'Vars',obj.t);
-            end
+            ode_func=CreateODE(d_func,control,@response,n_func);
 
             function c = control
                 if n<3 || isempty(c_func)
@@ -333,7 +324,6 @@ classdef Dyn_Model
             if nargin<6
                 ode_options=[];
             end
-            sym_q=ode_args{1};
             
             ode=obj.ODE(ode_args{:});
 
@@ -342,16 +332,17 @@ classdef Dyn_Model
             [T,Y]=ode45(ode,t_span,reshape(q0,numel(q0),1),ode_options);
 
             disp('Simulation Complete');
-
-            a=[Y(:,1),Y(:,2)].';
+            
+            a=Y(:,1:size(q0,1)).';
             obj.kin.simulate(a,draw_options{:});
             
-            for i=1:size(sym_q)
-                d_func=matlabFunction(sym_q(i));
+            D=d(ode_args{1},T);
+            
+            for i=1:size(q0,1)
                 figure('Name',strcat('q',num2str(i)));
                 plot(T, Y(:,i),'r-');
                 hold on
-                plot(T,d(d_func,T),'b-');
+                plot(T, D(:,i),'b-');
             end
              
 %             figure('Name','Input');
@@ -360,10 +351,11 @@ classdef Dyn_Model
 %             plot(times, torques(1:size(times,1),2),'r--');
             
             function vals = d(d_func,t_list)
-                if nargin(d_func)==0
-                    vals=d_func()*ones(size(t_list,1),1);
-                else
-                    vals=d_func(t_list);
+                n=numel(t_list);
+                vals=zeros(n,size(q0,1));
+                for ti=1:n
+                    current=d_func(t_list(ti));
+                    vals(ti,:)=current(:,1).';
                 end
             end
         end
