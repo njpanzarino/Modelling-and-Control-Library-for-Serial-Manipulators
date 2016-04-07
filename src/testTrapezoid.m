@@ -7,19 +7,19 @@ function testTrapezoid(initial,final,v_max,a_max)
         v_max=2;
     end
     if nargin < 2 || isempty(final)
-        final=[5,0];
+        final=[5,0;2,0];
     end
     if nargin < 1 || isempty(initial)
-        initial=[0,0];
+        initial=[0,0;-1,0];
     end
 
     [plan,tf]=Planner.trapezoid(initial,final,v_max,a_max);
 
     range=0:0.01:tf;
 
-    pos=zeros(1,numel(range));
-    vel=zeros(1,numel(range));
-    acc=zeros(1,numel(range));
+    pos=zeros(2,numel(range));
+    vel=zeros(2,numel(range));
+    acc=zeros(2,numel(range));
 
     for i=1:numel(range);
         d=plan(range(i));
@@ -30,13 +30,13 @@ function testTrapezoid(initial,final,v_max,a_max)
 
     figure
     subplot(1,3,1);
-    plot(range,pos(1,:));
+    plot(range,pos);
     title('position');
     subplot(1,3,2);
-    plot(range,vel(1,:));
+    plot(range,vel);
     title('velocity');
     subplot(1,3,3);
-    plot(range,acc(1,:));
+    plot(range,acc);
     title('acceleration');
 end
 

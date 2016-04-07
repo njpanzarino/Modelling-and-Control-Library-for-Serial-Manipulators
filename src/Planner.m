@@ -11,11 +11,11 @@ classdef Planner
     methods(Static)
         function d_func = fromSym(sym_q,sym_t)
             if nargin<2
-                sym_t=symvar(sym_q);
-                if size(sym_t,1)>0
-                    sym_t=sym_t(1);
+                vars=symvar(sym(sym_q));
+                if numel(vars)>0
+                    sym_t=vars(1);
                 else
-                    sym_t=sym('t',real);
+                    sym_t=sym('t','real');
                 end
             end
             
@@ -61,61 +61,88 @@ classdef Planner
         end
         
         function [d_func,tf,tm,tu] = trapezoid(initial,final,v_max,a_max)
-            v_max=abs(v_max);
-            a_max=abs(a_max);
+            sz=size(initial,1);
             
-            [qi,vi]=Planner.interpretInput(initial);
-            [qf,vf]=Planner.interpretInput(final);
-            
-            if abs(vi)>v_max
-                error('vi > v_max');
+            if numel(v_max)==1
+                v_max=v_max.*ones(sz,1);
             end
-            if abs(vf)>v_max
-                error('vf > v_max');
+            if numel(a_max)==1
+                a_max=a_max.*ones(sz,1);
             end
-            
-            dir=sign(qf-qi);
-            vel=dir*v_max;
-            acc=dir*a_max;
-            
-            tc = -(qi - qf + (vel.^2 - vf.^2)./(2*acc) + (vel.^2 - vi.^2)./(2*acc))./vel;
-            
-            if tc<0
-                vel=dir*abs((2^(1/2)*(vf^2 + vi^2 + 2*acc*qf - 2*acc*qi).^(1/2))/2);
-                tc=0;
-            end
-            
-            tu=(vel-vi)./acc;
-            td=(vf-vel)./-acc;
-            tm=tu+tc;
-            tf=tu+tc+td;
-            
-            q1=(vel.^2-vi.^2)./(2.*acc);
-            q2=q1+vel.*tc;
             
             t=sym('t','real');
             
-            sym_u=qi+vi*t+(1/2).*acc.*t^2;
-            sym_c=qi+q1+vel.*(t-tu);
-            sym_d=qi+q2+vel.*(t-tm)-(1/2).*acc.*(t-tm).^2;
-            sym_b=qf+vf.*(t-tf);
+            if sz==1
+                [d_func,tf,tm,tu] = trapezoid_single(final,initial,v_max,a_max);
+            else
+                tf=zeros(size(sz,1));
+                tm=zeros(size(sz,1));
+                tu=zeros(size(sz,1));
+                funcs=cell(sz,1);
+                for i=1:sz
+                    [funcs{i},tf(i),tm(i),tu(i)] = trapezoid_single(final(i,:),initial(i,:),v_max(i),a_max(i));
+                end
+                d_func=Planner.join(funcs);
+            end
             
-            f_u=matlabFunction([sym_u,diff(sym_u,t),diff(sym_u,t,2)],'Vars',t);
-            f_c=matlabFunction([sym_c,diff(sym_c,t),diff(sym_c,t,2)],'Vars',t);
-            f_d=matlabFunction([sym_d,diff(sym_d,t),diff(sym_d,t,2)],'Vars',t);
-            f_b=matlabFunction([sym_b,diff(sym_b,t),diff(sym_b,t,2)],'Vars',t);
+            function [desired,tf,tm,tu] = trapezoid_single(final,initial,v_max,a_max)
+                v_max=abs(v_max);
+                a_max=abs(a_max);
             
-            d_func=@trapezoid;
+                [qi,vi]=Planner.interpretInput(initial);
+                [qf,vf]=Planner.interpretInput(final);
+                
+                if abs(vi)>v_max
+                    error('vi > v_max');
+                end
+                if abs(vf)>v_max
+                    error('vf > v_max');
+                end
+
+                dir=sign(qf-qi);
+                vel=dir*v_max;
+                acc=dir*a_max;
+                
+                tc = -(qi - qf + (vel^2 - vf^2)/(2*acc) + (vel^2 - vi^2)/(2*acc))/vel;
             
-            function desired = trapezoid(t)
-                if t<tu
-                    desired=f_u(t);
-                elseif t<(tm)
-                    desired=f_c(t);
-                elseif t<(tf)
-                    desired=f_d(t);
-                else
-                    desired=f_b(t);
+                if tc<0
+                    vel=dir*abs((2^(1/2)*(vf^2 + vi^2 + 2*acc*qf - 2*acc*qi)^(1/2))/2);
+                    tc=0;
+                end
+
+                tu=(vel-vi)/acc;
+                td=(vf-vel)/-acc;
+                tm=tu+tc;
+                tf=tu+tc+td;
+
+                q1=(vel^2-vi^2)/(2*acc);
+                q2=q1+vel*tc;
+
+                sym_u=qi+vi*t+(1/2)*acc*t^2;
+                sym_c=qi+q1+vel*(t-tu);
+                sym_d=qi+q2+vel*(t-tm)-(1/2)*acc*(t-tm)^2;
+                sym_b=qf+vf*(t-tf);
+                
+%                 sympref('HeavisideAtOrigin',1);
+%                 heaviside(sym(0))
+                
+                f_u=matlabFunction([sym_u,diff(sym_u,t),diff(sym_u,t,2)],'Vars',t);
+                f_c=matlabFunction([sym_c,diff(sym_c,t),diff(sym_c,t,2)],'Vars',t);
+                f_d=matlabFunction([sym_d,diff(sym_d,t),diff(sym_d,t,2)],'Vars',t);
+                f_b=matlabFunction([sym_b,diff(sym_b,t),diff(sym_b,t,2)],'Vars',t);
+                
+                desired = @trapezoid_single;
+                
+                function desired = trapezoid_single(t)
+                    if t<tu
+                        desired=f_u(t);
+                    elseif t<(tm)
+                        desired=f_c(t);
+                    elseif t<(tf)
+                        desired=f_d(t);
+                    else
+                        desired=f_b(t);
+                    end
                 end
             end
         end

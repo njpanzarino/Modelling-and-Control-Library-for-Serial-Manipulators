@@ -8,6 +8,14 @@ disp('Calculating Kinematics');
 kin=Kin_Model.fromDH([q(1),1,.1,-pi/2;
                       q(2),0,1,0;
                       q(3),0,1,0],q);
+                  
+test1=kin.forward_kin([0;0;0]);
+test2=kin.forward_kin([pi/4;pi/3;3*pi/4]);
+test3=kin.forward_kin([1;1;1]);
+
+kin.inverse_kin(test1)
+kin.inverse_kin(test2)
+kin.inverse_kin(test3)
 
 model=Dyn_Model(kin);
 
@@ -36,7 +44,7 @@ plan2=Planner.trapezoid(x0(2,:),[q_d(2),0],1,1);
 plan3=Planner.fromSym(q_d(3));
 plan=Planner.join({plan1,plan2,plan3});
 
-control=Controller.ComputedTorque(model,Kp,Kv);
+control=Controller.ComputedTorque(@model.inverse_dyn,Kp,Kv);
 noise=@(a,t)0.02*randn(size(a));
 
 options = odeset('RelTol',1e-4,'AbsTol',1e-4.*ones(numel(model.q)*2,1));

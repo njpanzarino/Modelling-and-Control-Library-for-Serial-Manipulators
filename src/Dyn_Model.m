@@ -309,7 +309,7 @@ classdef Dyn_Model
 
             function c = control
                 if n<3 || isempty(c_func)
-                    c_func = Controller.ComputedTorque(obj);
+                    c_func = Controller.ComputedTorque(@obj.inverse_Dyn,zeros(size(obj.q)),zeros(size(obj.q)));
                 end
                 c=c_func;
             end
