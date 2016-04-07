@@ -13,9 +13,13 @@ H.Euler=H.Euler;
 H.Euler=H.Euler;
 simplify(H.Euler)
 
+T=[H.getRotVel(t3),...
+    H.getRotVel(t2),...
+    H.getRotVel(t1)]
+
 q=sym('q',[3,1],'real');
 disp('Calculating Kinematics');
-kin=Kin_Model.fromDH([q(1),1,.1,-pi/2;
+kin=Kin_Model.fromDH([q(1),0,0,-pi/2;
                       q(2),0,1,0;
                       q(3),0,1,0],q);
                   
@@ -32,5 +36,5 @@ H=H_Trans(kin.forward_kin);
 Jg=H.getJacobian(kin.q);
 Ja=H.getAnalyticJacobian(kin.q);
 
-
+disp('complete');
 

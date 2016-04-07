@@ -85,6 +85,21 @@ classdef H_Trans
            value=[w(3,2);w(1,3);w(2,1)];
         end
 		
+        function [Jg,Ja] = getJacobians(obj,q)
+            Jg= sym(zeros(6,size(q,1)));
+            Ja= Jg;
+            w=obj.Wrench;
+            for i=1:size(q,1)
+                v=diff(w(1:3),q(i));
+                Jg(1:3,i) = v ;
+                Ja(1:3,i) = v ;
+                Jg(4:6,i) = obj.getRotVel(q(i));
+                Ja(4:6,i) = diff(w(4:6),q(i));
+            end 
+            Jg=simplify(Jg);
+            Ja=simplify(Ja);
+        end
+        
         function value = getJacobian(obj,q)
             value = sym(zeros(6,size(q,1)));
             for i=1:size(q,1)
@@ -92,6 +107,41 @@ classdef H_Trans
                 value(4:6,i) = obj.getRotVel(q(i));
             end 
             value=simplify(value);
+        end
+        
+        function Jg = JaToJg(obj,Ja)
+            t1=sym('t1','real');
+            t2=sym('t2','real');
+            t3=sym('t3','real');
+            H_=H_Trans();
+            H_.Euler=[t1;t2;t3];
+            
+            T_=[H_.getRotVel(t3),...
+                H_.getRotVel(t2),...
+                H_.getRotVel(t1)];
+            
+            T=subs(T_,[t1;t2;t3],obj.Euler);
+            
+            Ta=[eye(3),zeros(3);zeros(3),T];
+            
+            Jg=Ta*Ja;
+        end
+        function Ja = JgToJa(obj,Jg)
+            t1=sym('t1','real');
+            t2=sym('t2','real');
+            t3=sym('t3','real');
+            H_=H_Trans();
+            H_.Euler=[t1;t2;t3];
+            
+            T_=[H_.getRotVel(t3),...
+                H_.getRotVel(t2),...
+                H_.getRotVel(t1)];
+            
+            T=subs(T_,[t1;t2;t3],obj.Euler);
+            
+            Ta=[eye(3),zeros(3);zeros(3),T];
+            
+            Ja=Ta\Jg;
         end
         
         function value = getAnalyticJacobian(obj,q)
