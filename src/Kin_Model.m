@@ -60,22 +60,22 @@ classdef Kin_Model
             end
             
             %baisc fsolve
-%             options = optimoptions(@fsolve,'Display','iter',...
-%                 'Algorithm','trust-region-reflective',...
-%                 'Jacobian','off');
-%             [value,~]=fsolve(@(q)(obj.forward_kin(q)-H),q0,options);
-            
-            %Jacobian fsolve
-            W=H_Trans(H).Wrench;
             options = optimoptions(@fsolve,'Display','iter',...
                 'Algorithm','trust-region-reflective',...
-                'Jacobian','on');
-            [value,~]=fsolve(@solve_fun_J,q0,options);
+                'Jacobian','off');
+            [value,~]=fsolve(@(q)(obj.forward_kin(q)-H),q0,options);
             
-            function [F,J] = solve_fun_J(q)
-                F=H_Trans(obj.forward_kin(q)).Wrench-W;
-                J=obj.J(q);
-            end
+            %Jacobian fsolve
+%             W=H_Trans(H).Wrench;
+%             options = optimoptions(@fsolve,'Display','iter',...
+%                 'Algorithm','trust-region-reflective',...
+%                 'Jacobian','on');
+%             [value,~]=fsolve(@solve_fun_J,q0,options);
+%             
+%             function [F,J] = solve_fun_J(q)
+%                 F=H_Trans(obj.forward_kin(q)).Wrench-W;
+%                 J=obj.J(q);
+%             end
             %Inverse Jacobian Method (Hill Climb)
             
             %Cyclic Coordinate Descent

@@ -26,6 +26,64 @@ classdef Planner
             d_func=matlabFunction(desired_t,'Vars',sym_t);
         end
         
+        function d_func = fromList(desired_list,t0,step)
+            n=numel(desired_list);
+            
+            d_func=@fromList;
+            function desired = fromList(t)
+                index=(t-t0)/step;
+                i1=floor(index);
+                i2=ceil(index);
+                if i1==i2
+                    desired=desired_list(index);
+                elseif i2>n
+                    desired=desired_list(n);
+                else
+                    desired=Planner.interpolate(t,i1*step,desired_list(i1),i2*step,desired_list(i2));
+                end
+            end
+        end
+        
+        function d_func = spline(desired_list,t_range)
+            n=numel(desired_list);
+            sz=size(desired_list{1});
+            funcs=cell(sz(1),1);
+%             t_range=t0:step:n*step;
+            
+            for q_i=1:sz(1)
+                q_d=zeros(n,1);
+                
+                for i=1:n
+                    q_d(i)=desired_list{i}(q_i,1);
+                end
+                
+                if size(desired_list{1},2)>1
+                    vi=desired_list{1}(q_i,2);
+                else
+                    vi=0;
+                end
+                
+                if size(desired_list{n},2)>1
+                    vf=desired_list{n}(q_i,2);
+                else
+                    vf=0;
+                end
+                
+                pp=spline(t_range,[vi;q_d;vf]);
+                d_pp=deriv_pp(pp);
+                dd_pp=deriv_pp(d_pp);
+                funcs{q_i}=@(t)[ppval(pp,t),ppval(d_pp,t),ppval(dd_pp,t)];
+            end
+            
+            d_func = Planner.join(funcs);
+            
+            function d_pp=deriv_pp(pp)
+                [breaks,coefs,l,k,d] = unmkpp(pp);
+                % make the polynomial that describes the derivative
+                d_pp = mkpp(breaks,repmat(k-1:-1:1,d*l,1).*coefs(:,1:k-1),d);
+            end
+        end
+        
         function [d_func, sym_a] = trajectory(final, initial, tf, t0)
             if nargin<4 || isempty(t0)
                 t0=0;
@@ -147,8 +205,38 @@ classdef Planner
             end
         end
         
-        function d_func = toJointSpace(d_func,kin_model)
+        function d_func = toJointSpace(d_func,equ_q,vars,t_range)
+            equ_q=equ_q(:,1);
+            vars=reshape(vars,[],1);
             
+            map_pos=mapPos;
+            map_vel=mapVel;
+            
+%             t_range=t0:t_step:tf;
+            n=numel(t_range);
+            desired=cell(n,1);
+            for i=1:n
+                workspace_d=d_func(t_range(i));
+                desired{i}=map_pos(workspace_d(:,1));
+                if i==1||i==n
+                    desired{i}=[desired{i},map_vel(workspace_d(:,1:2))];
+                end
+            end
+            
+            d_func=Planner.spline(desired,t_range);
+            
+            function func = mapPos
+                sym_q=equ_q;
+                
+                func=matlabFunction(sym_q,'Vars',{vars});
+            end
+            function func = mapVel
+                sym_q=equ_q;
+                [sym_d_q,d_vars,~]=Planner.diffT(sym_q,vars);
+%                 [sym_dd_q,~,~]=Planner.diffT(sym_d_q,vars);
+                
+                func=matlabFunction(sym_d_q,'Vars',{[vars,d_vars]});
+            end
         end
         
         function d_func = join(funcs)
@@ -193,9 +281,42 @@ classdef Planner
             end
         end
         
-        function y = interpolate(t,t1,y1,varargin)
-            
+        function q = interpolate(t,t1,q1,t2,q2)
+            q=(q2-q1).*((t-t1)/(t2-t1))+q1;
         end
+        
+        function [equ,d_q,dd_q]=diffT(equ,vars,t)
+            sz=size(vars);
+            if nargin<3||isempty(t)
+                t=sym('t','real');
+            end
+            
+            d_q=sym('d_q',sz);
+            dd_q=sym('dd_q',sz);
+            
+            q_t=sym('q_t',sz);
+            d_q_t=sym('d_q_t',sz);
+            dd_q_t=sym('dd_q_t',sz);
+            for i=1:sz
+                d_q(i)=sym(strcat('d_',char(vars(i))),'real');
+                dd_q(i)=sym(strcat('dd_',char(vars(i))),'real');
+                
+                q_t(i) = sym(strcat(char(vars(i)),'(',char(t),')'),'real');
+                d_q_t(i) = diff(q_t(i),t);
+                dd_q_t(i) = diff(q_t(i),t,2);
+            end
+            
+            equ=subs(equ,vars,q_t);
+            equ=subs(equ,d_q,d_q_t);
+            equ=subs(equ,dd_q,dd_q_t);
+            
+            equ=diff(equ,t);
+            
+            equ=subs(equ,dd_q_t,dd_q);
+            equ=subs(equ,d_q_t,d_q);
+            equ=subs(equ,q_t,vars);
+        end
+        
     end
 end
 
