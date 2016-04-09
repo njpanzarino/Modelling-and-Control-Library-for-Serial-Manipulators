@@ -1,4 +1,4 @@
-classdef Kin_Model
+classdef Kin_Model < handle
     %Kin_Model: Kinematic Model of a serial robot manipulator
     
     properties
@@ -10,7 +10,7 @@ classdef Kin_Model
         n_frames
     end
     
-    properties(Access = private)
+    properties(Access = public)
         T_matrices
         
         sym_lambda = sym('lambda');
@@ -36,29 +36,41 @@ classdef Kin_Model
         
         function value = T(obj,from,to)
             value = obj.T_matrices{from+1,to+1};
-            
+            if isempty(value)
+                obj=obj.calculateTransformation(from,to);
+                value = obj.T_matrices{from+1,to+1};
+            end
         end
         
-        function value = forward_kin(obj,q,useEuler)
+        function value = forward_kin(obj,q,asWrench)
             if nargin<2
                 q=obj.q;
             end
             if nargin<3
-                useEuler=false;
+                asWrench=false;
             end
             
-            if useEuler
+            if isempty(obj.f_kin_func)
+                obj=obj.calculateForwardKinematics();
+            end
+            
+            if asWrench
                 T=obj.f_kin_func(q);
                 value=[T.Trans;T.Euler];
             else
                 value=obj.f_kin_func(q);
             end
         end
-        
-        function value = inverse_kin(obj,H,q0)
-            if nargin<2
-                H=sym('H',4);
+        function value = inverse_kin(obj,d_pose,q0)
+            sz=size(d_pose);
+            if isequal(sz,[4,4])
+                asWrench=false;
+            elseif isequal(sz,[6,1])
+                asWrench=true;
+            else
+                error('POSE must be 4x4 homogeneous transformation matrix or 6x1 wrench');
             end
+            
             if nargin<3
                 q0=zeros(size(obj.q));
             end
@@ -67,7 +79,7 @@ classdef Kin_Model
             options = optimoptions(@fsolve,'Display','iter',...
                 'Algorithm','trust-region-reflective',...
                 'Jacobian','off');
-            [value,~]=fsolve(@(q)(obj.forward_kin(q)-H),q0,options);
+            [value,~]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
             
             %Jacobian fsolve
 %             W=H_Trans(H).Wrench;
@@ -89,6 +101,10 @@ classdef Kin_Model
         end
         
         function value = J(obj,q)
+            if isempty(obj.J_func)
+                obj.calculateJacobian();
+            end
+            
             if nargin>1
                 value=obj.J_func(q);
             else
@@ -96,6 +112,9 @@ classdef Kin_Model
             end
         end
         function value = inv_J(obj,q,lambda)
+            if isempty(obj.inv_J0_func)
+                obj.calculatePesudoInvJacobian();
+            end
             switch nargin
                 case 1
                     value=obj.inv_J0_func(obj.q);
@@ -111,6 +130,9 @@ classdef Kin_Model
         end
         
         function value = Ja(obj,q)
+            if isempty(obj.J_func)
+                obj.calculateAnalyticJacobian();
+            end
             if nargin>1
                 value=obj.Ja_func(q);
             else
@@ -118,6 +140,9 @@ classdef Kin_Model
             end
         end
         function value = inv_Ja(obj,q,lambda)
+            if isempty(obj.inv_J0_func)
+                obj.calculatePesudoInvAnalyticJacobian();
+            end
             switch nargin
                 case 1
                     value=obj.inv_Ja0_func(obj.q);
@@ -292,11 +317,6 @@ classdef Kin_Model
             for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=H_Trans.fromDH(DH_Matrix(i,:));
             end
-            obj=obj.calculateFromChain();
-            obj=obj.calculatePlot();
-            obj=obj.calculateForwardKinematics();
-            obj=obj.calculateJacobian();
-            obj=obj.calculatePesudoInvJacobian();
         end
         
         function obj=fromPrompt()
@@ -347,32 +367,18 @@ classdef Kin_Model
             end
         end
         
-        function obj = calculateBaseTransforms(obj)
-            for r = 1:size(obj.T_matrices,1)
-                for c = 1:size(obj.T_matrices,2)
-                    if c>(r+1)
-                        temp=eye(4);
-                        for i=r:(c-1)
-                            temp=temp*obj.T_matrices{i,i+1}.H;
-                        end
-                        obj.T_matrices{r,c} = H_Trans(vpa(temp));
-                    end
+        function obj = calculateTransformation(obj,from,to)
+            c=to+1;
+            r=from+1;
+            if c>(r+1)
+                temp=eye(4);
+                for i=r:(c-1)
+                    temp=temp*obj.T(i-1,i).H;
                 end
+                obj.T_matrices{r,c} = H_Trans(vpa(temp));
+            elseif c<r
+                obj.T_matrices{r,c} = obj.T(c-1,r-1).inv;
             end
-        end
-        function obj = calculateIntermediateTransforms(obj)
-            for r = 1:size(obj.T_matrices,1)
-                for c = 1:size(obj.T_matrices,2)
-                    if c<r
-                        obj.T_matrices{r,c} = obj.T_matrices{c,r}.inv;
-                    end
-                end
-            end
-        end
-        
-        function obj = calculateFromChain(obj)
-            obj = obj.calculateBaseTransforms();
-            obj = obj.calculateIntermediateTransforms();
         end
         
         function obj = calculatePlot(obj)
