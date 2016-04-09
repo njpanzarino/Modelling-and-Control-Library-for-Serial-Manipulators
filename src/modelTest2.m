@@ -13,9 +13,9 @@ kin=Kin_Model.fromDH([q(1),1,.1,-pi/2;
 % test2=kin.forward_kin([pi/4;pi/3;3*pi/4]);
 % test3=kin.forward_kin([1;1;1]);
 % 
-% kin.inverse_kin(test1)
-% kin.inverse_kin(test2)
-% kin.inverse_kin(test3)
+% kin.inverse_kin(test1);
+% kin.inverse_kin(test2);
+% kin.inverse_kin(test3);
 
 model=Dyn_Model(kin);
 

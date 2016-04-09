@@ -10,7 +10,7 @@ classdef Kin_Model < handle
         n_frames
     end
     
-    properties(Access = public)
+    properties(Access = private)
         T_matrices
         
         sym_lambda = sym('lambda');
@@ -76,7 +76,7 @@ classdef Kin_Model < handle
             end
             
             %baisc fsolve
-            options = optimoptions(@fsolve,'Display','iter',...
+            options = optimoptions(@fsolve,'Display','none',...
                 'Algorithm','trust-region-reflective',...
                 'Jacobian','off');
             [value,~]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
@@ -130,7 +130,7 @@ classdef Kin_Model < handle
         end
         
         function value = Ja(obj,q)
-            if isempty(obj.J_func)
+            if isempty(obj.Ja_func)
                 obj.calculateAnalyticJacobian();
             end
             if nargin>1
@@ -140,7 +140,7 @@ classdef Kin_Model < handle
             end
         end
         function value = inv_Ja(obj,q,lambda)
-            if isempty(obj.inv_J0_func)
+            if isempty(obj.inv_Ja0_func)
                 obj.calculatePesudoInvAnalyticJacobian();
             end
             switch nargin
