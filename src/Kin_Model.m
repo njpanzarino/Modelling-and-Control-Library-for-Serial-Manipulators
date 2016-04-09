@@ -7,9 +7,7 @@ classdef Kin_Model
     
     properties(SetAccess = private)
         q
-        
         n_frames
-        
     end
     
     properties(Access = private)
@@ -18,9 +16,14 @@ classdef Kin_Model
         sym_lambda = sym('lambda');
         
         f_kin_func
+        
         J_func
         inv_JLambda_func
         inv_J0_func
+        
+        Ja_func
+        inv_JaLambda_func
+        inv_Ja0_func
         
         trans_func %Function for determining points/transformations for each link when plotting
     end
@@ -33,6 +36,7 @@ classdef Kin_Model
         
         function value = T(obj,from,to)
             value = obj.T_matrices{from+1,to+1};
+            
         end
         
         function value = forward_kin(obj,q,useEuler)
@@ -91,7 +95,6 @@ classdef Kin_Model
                 value=obj.J_func(obj.q);
             end
         end
-        
         function value = inv_J(obj,q,lambda)
             switch nargin
                 case 1
@@ -103,6 +106,28 @@ classdef Kin_Model
                         value=obj.inv_J0_func(q);
                     else
                         value=obj.inv_JLambda_func(q,lambda);
+                    end
+            end
+        end
+        
+        function value = Ja(obj,q)
+            if nargin>1
+                value=obj.Ja_func(q);
+            else
+                value=obj.Ja_func(obj.q);
+            end
+        end
+        function value = inv_Ja(obj,q,lambda)
+            switch nargin
+                case 1
+                    value=obj.inv_Ja0_func(obj.q);
+                case 2
+                    value=obj.inv_Ja0_func(q);
+                case 3
+                    if lamda<=0
+                        value=obj.inv_Ja0_func(q);
+                    else
+                        value=obj.inv_JaLambda_func(q,lambda);
                     end
             end
         end
@@ -322,7 +347,7 @@ classdef Kin_Model
             end
         end
         
-        function obj = calculateFromChain(obj)
+        function obj = calculateBaseTransforms(obj)
             for r = 1:size(obj.T_matrices,1)
                 for c = 1:size(obj.T_matrices,2)
                     if c>(r+1)
@@ -334,7 +359,8 @@ classdef Kin_Model
                     end
                 end
             end
-            
+        end
+        function obj = calculateIntermediateTransforms(obj)
             for r = 1:size(obj.T_matrices,1)
                 for c = 1:size(obj.T_matrices,2)
                     if c<r
@@ -342,6 +368,11 @@ classdef Kin_Model
                     end
                 end
             end
+        end
+        
+        function obj = calculateFromChain(obj)
+            obj = obj.calculateBaseTransforms();
+            obj = obj.calculateIntermediateTransforms();
         end
         
         function obj = calculatePlot(obj)
@@ -364,7 +395,6 @@ classdef Kin_Model
             J=obj.T(0,obj.n_frames).getJacobian(obj.q);
             obj.J_func=createFunction(J,obj.q);
         end
-        
         function obj = calculatePesudoInvJacobian(obj)
             J=obj.J;
             
@@ -374,6 +404,21 @@ classdef Kin_Model
             
             inv_J0 = vpa(subs(lambda_inv_J,obj.sym_lambda,0));
             obj.inv_J0_func=createFunction(inv_J0,obj.q);
+        end
+        
+        function obj = calculateAnalyticJacobian(obj)
+            Ja=obj.T(0,obj.n_frames).JgToJa(obj.J);
+            obj.Ja_func=createFunction(Ja,obj.q);
+        end
+        function obj = calculatePesudoInvAnalyticJacobian(obj)
+            Ja=obj.Ja;
+            
+            lambda_inv_Ja = Ja.'/(Ja*Ja.' + (obj.sym_lambda^2).*eye(size(Ja,1)));
+            
+            obj.inv_JaLambda_func = createFunction(lambda_inv_Ja,{obj.q,sym('lambda')});
+            
+            inv_Ja0 = vpa(subs(lambda_inv_Ja,obj.sym_lambda,0));
+            obj.inv_Ja0_func=createFunction(inv_Ja0,obj.q);
         end
         
     end

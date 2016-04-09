@@ -139,9 +139,9 @@ classdef H_Trans
             
             T=subs(T_,[t1;t2;t3],obj.Euler);
             
-            Ta=[eye(3),zeros(3);zeros(3),T];
+            inv_Ta=[eye(3),zeros(3);zeros(3),inv(T)];
             
-            Ja=Ta\Jg;
+            Ja=inv_Ta*Jg;
         end
         
         function value = getAnalyticJacobian(obj,q)

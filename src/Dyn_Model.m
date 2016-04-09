@@ -10,6 +10,10 @@ classdef Dyn_Model
         b %damping for each joint (tau= b*d_q)
     end
     
+    properties(Dependent)
+        g %gravity vector (combined magnitude and direction)
+     end
+    
     properties(SetAccess = private)
         kin %Kinematic Model of a serial Robot Manipulator
         
@@ -21,6 +25,15 @@ classdef Dyn_Model
         tau %symbolic represantaion of joint control values, used in symbolic calculation of forward_dynamics
         t=sym('t');
         
+    end
+    
+    properties(Dependent, SetAccess=private)
+        q    %joint variables
+        d_q  %1st time derivative of joint variables
+        dd_q %2nd time derivative of joint variables
+    end
+    
+    properties(Access=private)
         % M(q)*dd_q + V(q,d_q) + G(q) = tau
         sym_M %Inertia Matrix  :  M(q)
         sym_V %Coriolis Vector :  V(q,d_q)
@@ -35,30 +48,10 @@ classdef Dyn_Model
         
         func_fDyn
         func_iDyn
-    end
-    
-    properties(Dependent)
-        g %gravity vector (combined magnitude and direction)
-    end
-    
-    properties(Dependent, SetAccess=private)
-        q    %joint variables
-        d_q  %1st time derivative of joint variables
-        dd_q %2nd time derivative of joint variables
         
-        q_t
-        d_q_t
-        dd_q_t
-    end
-    
-    properties(Access=private)
         val_q    %joint variables
         val_d_q  %1st time derivative of joint variables
         val_dd_q %2nd time derivative of joint variables
-        
-        val_q_t    
-        val_d_q_t  
-        val_dd_q_t 
     end
     
     methods
@@ -66,10 +59,6 @@ classdef Dyn_Model
             if nargin>0
                 obj=Dyn_Model.fromKin_Model(kin);
             end
-        end
-        
-        function equ = diff(obj,equ)
-            equ=obj.subsQ(diff(obj.subsT(equ),obj.t));
         end
         
         function obj = clearMass(obj)
@@ -229,7 +218,7 @@ classdef Dyn_Model
                 end
             
                 %Can replace this with Jacobian calculation?
-                v=obj.diff(x);
+                v=obj.diffT(x);
             
                 Km=(1/2).*m.'*dot(v,v,2);
                 K=K+sum(Km);
@@ -246,7 +235,8 @@ classdef Dyn_Model
                 w=sym(zeros(size(obj.I,2),3));
                 for i=1:numel(temp)
                     %Can replace this with Jacobian calculation?
-                    w(i,:)=obj.subsQ(H_Trans(obj.subsT(r{i})).getRotVel(obj.t)).';
+                    [tmp,t_vars]=obj.subsT(r{i});
+                    w(i,:)=obj.subsQ(H_Trans(tmp).getRotVel(obj.t),t_vars).';
                 end
 
                 It=cell(size(obj.I,2),1);
@@ -272,11 +262,11 @@ classdef Dyn_Model
             L=K-P;
             E_L=sym(zeros(size(obj.q)));
             for i=1:numel(obj.q)
-                E_L(i)=obj.diff(diff(L,obj.d_q(i)))-diff(L,obj.q(i));
+                E_L(i)=obj.diffT(diff(L,obj.d_q(i)))-diff(L,obj.q(i));
             end
             E_L=simplify(vpa(E_L));
             
-            %Just get the matrices and done
+            % Get the Matrices
             obj.sym_G=subs(E_L,[obj.dd_q,obj.d_q],[zeros(size(obj.dd_q)),zeros(size(obj.d_q))]);
             obj.sym_V=subs(E_L,obj.dd_q,zeros(size(obj.dd_q)))-obj.sym_G;
             
@@ -287,7 +277,10 @@ classdef Dyn_Model
             
             obj.sym_G=simplify(obj.sym_G);
             obj.sym_V=simplify(obj.sym_V);
+            obj.sym_M=simplify(obj.sym_M);
+            obj.sym_invM=simplify(obj.sym_invM);
 
+            % Create the Functions
             obj.func_M=createFunction(obj.sym_M,obj.q);
             obj.func_V=createFunction(obj.sym_V,{obj.q,obj.d_q});
             obj.func_G=createFunction(obj.sym_G,obj.q);
@@ -371,23 +364,15 @@ classdef Dyn_Model
         end
         
         function obj = set.q(obj,q)
-            n=size(q);
+            sz=size(q);
             
             obj.val_q=q;
-            obj.val_d_q=sym('d_q',n);
-            obj.val_dd_q=sym('dd_q',n);
+            obj.val_d_q=sym('d_q',sz);
+            obj.val_dd_q=sym('dd_q',sz);
             
-            obj.val_q_t=sym('q_t',n);
-            obj.val_d_q_t=sym('d_q_t',n);
-            obj.val_dd_q_t=sym('dd_q_t',n);
-            
-            for i=1:n
+            for i=1:sz
                 obj.val_d_q(i)=sym(strcat('d_',char(q(i))),'real');
                 obj.val_dd_q(i)=sym(strcat('dd_',char(q(i))),'real');
-                
-                obj.val_q_t(i) = sym(strcat(char(q(i)),'(',char(obj.t),')'),'real');
-                obj.val_d_q_t(i) = diff(obj.val_q_t(i),obj.t);
-                obj.val_dd_q_t(i) = diff(obj.val_q_t(i),obj.t,2);
             end
         end
         function value = get.q(obj)
@@ -398,16 +383,6 @@ classdef Dyn_Model
         end
         function value = get.dd_q(obj)
             value=obj.val_dd_q;
-        end
-        
-        function value = get.q_t(obj)
-            value=obj.val_q_t;
-        end
-        function value = get.d_q_t(obj)
-            value=obj.val_d_q_t;
-        end
-        function value = get.dd_q_t(obj)
-            value=obj.val_dd_q_t;
         end
     end
     
@@ -424,16 +399,54 @@ classdef Dyn_Model
     end
     
     methods(Access=public)
-        function equ=subsT(obj,equ)
-            equ=subs(equ,obj.q,obj.q_t);
-            equ=subs(equ,obj.d_q,obj.d_q_t);
-            equ=subs(equ,obj.dd_q,obj.dd_q_t);
+        function equ=diffT(obj,equ)
+            sz=size(obj.q);
+            
+            q_t=sym('q_t',sz);
+            d_q_t=sym('d_q_t',sz);
+            dd_q_t=sym('dd_q_t',sz);
+            
+            for i=1:sz
+                q_t(i) = sym(strcat(char(obj.q(i)),'(',char(obj.t),')'),'real');
+                d_q_t(i) = diff(q_t(i),obj.t);
+                dd_q_t(i) = diff(q_t(i),obj.t,2);
+            end
+            
+            equ=subs(equ,obj.q,q_t);
+            equ=subs(equ,obj.d_q,d_q_t);
+            equ=subs(equ,obj.dd_q,dd_q_t);
+            
+            equ=diff(equ,obj.t);
+            
+            equ=subs(equ,dd_q_t,obj.dd_q);
+            equ=subs(equ,d_q_t,obj.d_q);
+            equ=subs(equ,q_t,obj.q);
         end
         
-        function equ=subsQ(obj,equ)
-            equ=subs(equ,obj.dd_q_t,obj.dd_q);
-            equ=subs(equ,obj.d_q_t,obj.d_q);
-            equ=subs(equ,obj.q_t,obj.q);
+        function [equ,t_vars]=subsT(obj,equ)
+            sz=size(obj.q);
+            
+            q_t=sym('q_t',sz);
+            d_q_t=sym('d_q_t',sz);
+            dd_q_t=sym('dd_q_t',sz);
+            
+            for i=1:sz
+                q_t(i) = sym(strcat(char(obj.q(i)),'(',char(obj.t),')'),'real');
+                d_q_t(i) = diff(q_t(i),obj.t);
+                dd_q_t(i) = diff(q_t(i),obj.t,2);
+            end
+            
+            t_vars=[q_t,d_q_t,dd_q_t];
+            
+            equ=subs(equ,obj.q,q_t);
+            equ=subs(equ,obj.d_q,d_q_t);
+            equ=subs(equ,obj.dd_q,dd_q_t);
+        end
+        
+        function equ=subsQ(obj,equ,t_vars)
+            equ=subs(equ,t_vars(:,3),obj.dd_q);
+            equ=subs(equ,t_vars(:,2),obj.d_q);
+            equ=subs(equ,t_vars(:,1),obj.q);
         end
     end
 end
