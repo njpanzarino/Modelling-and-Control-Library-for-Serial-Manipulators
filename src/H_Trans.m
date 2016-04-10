@@ -80,6 +80,33 @@ classdef H_Trans
             value=[obj.Trans;obj.Euler];
         end
         
+        %w=B*diff(euler)
+        function value = B(obj)
+            t1=sym('t1','real');
+            t2=sym('t2','real');
+            t3=sym('t3','real');
+            H_=H_Trans();
+            H_.Euler=[t1;t2;t3];
+            
+            B_=[H_.getRotVel(t3),...
+                H_.getRotVel(t2),...
+                H_.getRotVel(t1)];
+            value=subs(B_,[t1;t2;t3],obj.Euler);
+        end
+        %diff(euler)=inv_B*w
+        function value = inv_B(obj)
+            t1=sym('t1','real');
+            t2=sym('t2','real');
+            t3=sym('t3','real');
+            H_=H_Trans();
+            H_.Euler=[t1;t2;t3];
+            
+            B_=[H_.getRotVel(t3),...
+                H_.getRotVel(t2),...
+                H_.getRotVel(t1)];
+            value=subs(inv(B_),[t1;t2;t3],obj.Euler);
+        end
+        
         function value = getRotVel(obj,var)
            w=simplify(diff(obj.Rot,var)*obj.Rot.');
            value=[w(3,2);w(1,3);w(2,1)];
@@ -110,38 +137,15 @@ classdef H_Trans
         end
         
         function Jg = JaToJg(obj,Ja)
-            t1=sym('t1','real');
-            t2=sym('t2','real');
-            t3=sym('t3','real');
-            H_=H_Trans();
-            H_.Euler=[t1;t2;t3];
             
-            T_=[H_.getRotVel(t3),...
-                H_.getRotVel(t2),...
-                H_.getRotVel(t1)];
+            Ba=[eye(3),zeros(3);zeros(3),obj.B];
             
-            T=subs(T_,[t1;t2;t3],obj.Euler);
-            
-            Ta=[eye(3),zeros(3);zeros(3),T];
-            
-            Jg=Ta*Ja;
+            Jg=Ba*Ja;
         end
         function Ja = JgToJa(obj,Jg)
-            t1=sym('t1','real');
-            t2=sym('t2','real');
-            t3=sym('t3','real');
-            H_=H_Trans();
-            H_.Euler=[t1;t2;t3];
+            inv_Ba=[eye(3),zeros(3);zeros(3),obj.inv_B];
             
-            T_=[H_.getRotVel(t3),...
-                H_.getRotVel(t2),...
-                H_.getRotVel(t1)];
-            
-            T=subs(T_,[t1;t2;t3],obj.Euler);
-            
-            inv_Ta=[eye(3),zeros(3);zeros(3),inv(T)];
-            
-            Ja=inv_Ta*Jg;
+            Ja=inv_Ba*Jg;
         end
         
         function value = getAnalyticJacobian(obj,q)
