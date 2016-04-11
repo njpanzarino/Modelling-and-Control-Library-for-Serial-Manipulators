@@ -6,11 +6,20 @@ classdef Kin_Model < handle
     end
     
     properties(SetAccess = private)
-        q
         n_frames
     end
     
+    properties(Dependent, SetAccess=private)
+        q    %joint variables
+        d_q  %1st time derivative of joint variables
+        dd_q %2nd time derivative of joint variables
+    end
+    
     properties(Access = private)
+        val_q    %joint variables
+        val_d_q  %1st time derivative of joint variables
+        val_dd_q %2nd time derivative of joint variables
+        
         T_matrices
         
         sym_lambda = sym('lambda');
@@ -20,10 +29,12 @@ classdef Kin_Model < handle
         J_func
         inv_JLambda_func
         inv_J0_func
+        d_J_func
         
         Ja_func
         inv_JaLambda_func
         inv_Ja0_func
+        d_Ja_func
         
         trans_func %Function for determining points/transformations for each link when plotting
     end
@@ -55,8 +66,8 @@ classdef Kin_Model < handle
             end
             
             if asWrench
-                T=obj.f_kin_func(q);
-                value=[T.Trans;T.Euler];
+                T=H_Trans(obj.f_kin_func(q));
+                value=T.Wrench;
             else
                 value=obj.f_kin_func(q);
             end
@@ -75,12 +86,32 @@ classdef Kin_Model < handle
                 q0=zeros(size(obj.q));
             end
             
-            %baisc fsolve
-            options = optimoptions(@fsolve,'Display','none',...
-                'Algorithm','trust-region-reflective',...
-                'Jacobian','off');
-            [value,~]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
+            value=basicFSolve;
             
+            %baisc fsolve
+            function value = basicFSolve()
+                options = optimoptions(@fsolve,'Display','iter',...
+                    'Algorithm','trust-region-reflective',...
+                    'TolFun',1e-8,'Jacobian','off');
+                [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
+                if flag>1
+                    [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),value,options);
+                end
+            end
+            
+            function value = wrenchFSolve()
+                if ~asWrench
+                    d_pose=H_Trans(d_pose).Wrench;
+                    asWrench=true;
+                end
+                options = optimoptions(@fsolve,'Display','iter',...
+                    'Algorithm','trust-region-reflective',...
+                    'TolFun',1e-8,'Jacobian','off');
+                [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
+                if flag>1
+                    [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),value,options);
+                end
+            end
             %Jacobian fsolve
 %             W=H_Trans(H).Wrench;
 %             options = optimoptions(@fsolve,'Display','iter',...
@@ -98,6 +129,20 @@ classdef Kin_Model < handle
             %Simulated Annealing
             %Map areas separated by singularities
             
+        end
+        
+        function value = forward_vel(obj,q,d_q)
+            value=obj.J(q)*d_q;
+        end
+        function value = inverse_vel(obj,q,wrench)
+            value=obj.inv_J(q)*wrench;
+        end
+        
+        function value = forward_acc(obj,q,d_q,dd_q)
+            value=obj.J(q)*dd_q+obj.d_J(q,d_q)*d_q;
+        end
+        function value = inverse_acc(obj,q,d_q,wrench)
+            value=obj.inv_J(q)*(wrench-obj.d_J(q,d_q)*d_q);
         end
         
         function value = J(obj,q)
@@ -128,6 +173,19 @@ classdef Kin_Model < handle
                     end
             end
         end
+        function value = d_J(obj,q,d_q)
+            if isempty(obj.d_J_func)
+                obj.calculateJacobianDot();
+            end
+            
+            if nargin>2
+                value=obj.d_J_func(q,d_q);
+            elseif nargin>1
+                value=obj.d_J_func(q,obj.d_q);
+            else
+                value=obj.d_J_func(obj.q);
+            end
+        end
         
         function value = Ja(obj,q)
             if isempty(obj.Ja_func)
@@ -154,6 +212,19 @@ classdef Kin_Model < handle
                     else
                         value=obj.inv_JaLambda_func(q,lambda);
                     end
+            end
+        end
+        function value = d_Ja(obj,q,d_q)
+            if isempty(obj.d_Ja_func)
+                obj.calculateAnalyticJacobianDot();
+            end
+            
+            if nargin>2
+                value=obj.d_Ja_func(q,d_q);
+            elseif nargin>1
+                value=obj.d_Ja_func(q,obj.d_q);
+            else
+                value=obj.d_Ja_func(obj.q);
             end
         end
         
@@ -279,6 +350,30 @@ classdef Kin_Model < handle
         end
     end
     
+    methods
+        function set.q(obj,q)
+            sz=size(q);
+            
+            obj.val_q=q;
+            obj.val_d_q=sym('d_q',sz);
+            obj.val_dd_q=sym('dd_q',sz);
+            
+            for i=1:sz(1)
+                obj.val_d_q(i)=sym(strcat('d_',char(q(i))),'real');
+                obj.val_dd_q(i)=sym(strcat('dd_',char(q(i))),'real');
+            end
+        end
+        function value = get.q(obj)
+            value=obj.val_q;
+        end
+        function value = get.d_q(obj)
+            value=obj.val_d_q;
+        end
+        function value = get.dd_q(obj)
+            value=obj.val_dd_q;
+        end
+    end
+    
     methods(Static)
         function obj = fromH_TransChain(tForms,jointVars)
             obj = Kin_Model;
@@ -295,12 +390,7 @@ classdef Kin_Model < handle
             for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=tForms{i};
             end
-            
-            obj=obj.calculateFromChain();
-            obj=obj.calculatePlot();
-            obj=obj.calculateForwardKinematics();
-            obj=obj.calculateJacobian();
-            obj=obj.calculatePesudoInvJacobian();
+
         end
         
         function obj=fromDH(DH_Matrix,jointVars)
@@ -411,6 +501,10 @@ classdef Kin_Model < handle
             inv_J0 = vpa(subs(lambda_inv_J,obj.sym_lambda,0));
             obj.inv_J0_func=createFunction(inv_J0,obj.q);
         end
+        function obj = calculateJacobianDot(obj)
+            d_J=obj.diffT(obj.J);
+            obj.d_J_func=createFunction(d_J,{obj.q,obj.d_q});
+        end
         
         function obj = calculateAnalyticJacobian(obj)
             Ja=obj.T(0,obj.n_frames).JgToJa(obj.J);
@@ -426,7 +520,36 @@ classdef Kin_Model < handle
             inv_Ja0 = vpa(subs(lambda_inv_Ja,obj.sym_lambda,0));
             obj.inv_Ja0_func=createFunction(inv_Ja0,obj.q);
         end
+        function obj = calculateAnalyticJacobianDot(obj)
+            d_Ja=obj.diffT(obj.Ja);
+            obj.d_Ja_func=createFunction(d_Ja,{obj.q,obj.d_q});
+        end
         
+        function equ=diffT(obj,equ)
+            sz=size(obj.q);
+            
+            t=sym('t,real');
+            
+            q_t=sym('q_t',sz);
+            d_q_t=sym('d_q_t',sz);
+            dd_q_t=sym('dd_q_t',sz);
+            
+            for i=1:sz
+                q_t(i) = sym(strcat(char(obj.q(i)),'(',char(t),')'),'real');
+                d_q_t(i) = diff(q_t(i),t);
+                dd_q_t(i) = diff(q_t(i),t,2);
+            end
+            
+            equ=subs(equ,obj.q,q_t);
+            equ=subs(equ,obj.d_q,d_q_t);
+            equ=subs(equ,obj.dd_q,dd_q_t);
+            
+            equ=diff(equ,t);
+            
+            equ=subs(equ,dd_q_t,obj.dd_q);
+            equ=subs(equ,d_q_t,obj.d_q);
+            equ=subs(equ,q_t,obj.q);
+        end
     end
     
 end

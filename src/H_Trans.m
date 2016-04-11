@@ -11,6 +11,7 @@ classdef H_Trans
         Rot
         Euler   %ZYX Euler Angles
         Wrench
+        Column
     end
     
     properties (Access=private)
@@ -55,7 +56,6 @@ classdef H_Trans
                 value=[atan2(R(3,2),R(3,3));
                        atan2(-R(1,3),sqrt(R(3,2)^2+R(3,3)^2));
                        atan2(R(2,1),R(1,1))];
-                value=simplify(value);
             else
                 value=obj.sym_Euler;
             end
@@ -78,6 +78,13 @@ classdef H_Trans
         end
         function value = get.Wrench(obj)
             value=[obj.Trans;obj.Euler];
+        end
+        
+        function obj = set.Column(obj,value)
+            obj.H=reshape(value,4,4);
+        end
+        function value = get.Column(obj)
+            value=reshape(obj.H,16,1);
         end
         
         %w=B*diff(euler)
@@ -282,19 +289,25 @@ classdef H_Trans
             0,0,0,1];
         end
         
-        function M = single( input_args )
+        function M = single( input )
         
-            if isequal(size(input_args),[4,4]),
-                M = input_args;
-			elseif isequal(size(input_args),[3,3])
+            if isequal(size(input),[4,4]),
+                M = input;
+			elseif isequal(size(input),[3,3])
                 M=sym(eye(4));
-                M(1:3,1:3) = input_args(1:3,1:3);
-			elseif isequal(size(input_args),[1,3])
+                M(1:3,1:3) = input(1:3,1:3);
+			elseif isequal(size(input),[1,3])
                 M=sym(eye(4));
-                M(1:3,4) = input_args(1,:);
-            elseif isequal(size(input_args),[3,1])
+                M(1:3,4) = input(1,:);
+            elseif isequal(size(input),[3,1])
                 M=sym(eye(4));
-                M(1:3,4) = input_args(:,1).';
+                M(1:3,4) = input(:,1).';
+            elseif isequal(size(input),[6,1])
+                M=H_Trans;
+                M.Wrench=input;
+                M=M.H;
+            elseif isequal(size(input),[16,1])
+                M=reshape(input,[4,4]);
             end
         end
     end

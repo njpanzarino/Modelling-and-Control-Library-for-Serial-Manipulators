@@ -39,6 +39,8 @@ x0=[ 0      ,0;
 Kp=[10;10;10];
 Kv=[10;10;10];
 
+% plan=Planner.fromSym(q_d);
+
 plan1=Planner.fromSym(q_d(1));
 plan2=Planner.trapezoid(x0(2,:),[q_d(2),0],1,1);
 plan3=Planner.fromSym(q_d(3));

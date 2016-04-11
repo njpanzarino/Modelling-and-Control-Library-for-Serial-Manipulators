@@ -200,7 +200,7 @@ classdef Dyn_Model
         end
         
         function obj = calculateDynamics(obj)
-            K=0;
+            P=0;K=0;
             
             if size(obj.Mass,2)>0
                 temp=cell(size(obj.Mass,2),1);
@@ -222,6 +222,13 @@ classdef Dyn_Model
             
                 Km=(1/2).*m.'*dot(v,v,2);
                 K=K+sum(Km);
+                
+                obj.g_dir=reshape(obj.g_dir,1,numel(obj.g_dir));
+                g=repmat(-obj.g_dir,size(x,1),1);
+                h=dot(x,g,2);
+
+                P=obj.g_val.*m.*h;
+                P=sum(P);
             end
             
             if size(obj.I,2)>0
@@ -252,12 +259,7 @@ classdef Dyn_Model
                 K=K+sum(Kr);
             end
             
-            obj.g_dir=reshape(obj.g_dir,1,numel(obj.g_dir));
-            g=repmat(-obj.g_dir,size(x,1),1);
-            h=dot(x,g,2);
             
-            P=obj.g_val.*m.*h;
-            P=sum(P);
             
             L=K-P;
             E_L=sym(zeros(size(obj.q)));
@@ -273,8 +275,11 @@ classdef Dyn_Model
             obj.sym_M=E_L-obj.sym_V-obj.sym_G;
             [obj.sym_M,~]=equationsToMatrix(obj.sym_M,obj.dd_q);
             
-            obj.sym_invM=inv(obj.sym_M);
-            
+            if isequal(obj.sym_M,zeros(size(obj.sym_M)))
+                obj.sym_invM=obj.sym_M;
+            else
+                obj.sym_invM=inv(obj.sym_M);
+            end
             obj.sym_G=simplify(obj.sym_G);
             obj.sym_V=simplify(obj.sym_V);
             obj.sym_M=simplify(obj.sym_M);
