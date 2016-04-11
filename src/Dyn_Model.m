@@ -334,28 +334,20 @@ classdef Dyn_Model
             a=Y(:,1:size(q0,1)).';
             obj.kin.simulate(a,draw_options{:});
             
-            D=d(ode_args{1},T);
+            D = evalf(ode_args{1},T);
+            Dp = D(:,:,1);
             
             for i=1:size(q0,1)
                 figure('Name',strcat('q',num2str(i)));
                 plot(T, Y(:,i),'r-');
                 hold on
-                plot(T, D(:,i),'b-');
+                plot(T, Dp(:,i),'b-');
             end
              
-%             figure('Name','Input');
-%             plot(times, torques(1:size(times,1),1),'-' );
-%             hold on
-%             plot(times, torques(1:size(times,1),2),'r--');
+            TAU=evalf(ode_args{2},D,reshape(Y,size(Y,1),size(q0,1),[]));
+            figure('Name','Input');
+            plot(T, TAU);
             
-            function vals = d(d_func,t_list)
-                n=numel(t_list);
-                vals=zeros(n,size(q0,1));
-                for ti=1:n
-                    current=d_func(t_list(ti));
-                    vals(ti,:)=current(:,1).';
-                end
-            end
         end
     end
     
