@@ -1,7 +1,7 @@
 function [ ode_func ] = CreateODE(desired_func,control_func,response_func,noise_func)
 %CreateODE Returns derivative of state x at time t, given functions for
 %desired state, controller output, and expected system response
-%   desired_func: desired = desired_func(t)
+%   desired_func: desired = desired_func(t,actual)
 %   control_func: tau = control_func(desired,actual)
 %   response_func: diff(actual,t) = response_func(actual,tau)
 %   noise_func: noise = noise_func(actual,tau)  **(Optional)**
@@ -21,11 +21,19 @@ function [ ode_func ] = CreateODE(desired_func,control_func,response_func,noise_
         response=response_func;
     end
     
+    if nargin(desired_func)>1
+        d_func=@(t,actual)desired_func(t,actual);
+    else
+        d_func=@(t,~)desired_func(t);
+    end
+    
     ode_func = @ode;
     
     function [d_x,tau] = ode(t,x)
         sz=size(x);
-        desired=desired_func(t);
+        
+        desired=d_func(t,x);
+%         actual=x;
         actual=reshape(x,[],2);
         
         tau=control_func(desired, actual);

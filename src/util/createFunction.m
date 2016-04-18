@@ -5,7 +5,7 @@ function func = createFunction(expr,input)
         if iscell(in)
             for i=1:numel(in)
                 in{i}=reshape(in{i},numel(in{i}),1);
-                vars=union(vars,in{i});
+                vars=union(in{i},vars);
             end
         else
             vars=reshape(in,numel(in),1);

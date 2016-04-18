@@ -107,6 +107,8 @@ classdef Controller
         function [q,d_q,dd_q] = interpretInput(input)
             sz=size(input);
             
+            input=reshape(input,[],nargout);
+            
             q=input(:,1);
             
             if sz(2)>1

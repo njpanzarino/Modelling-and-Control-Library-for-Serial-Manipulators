@@ -15,6 +15,8 @@ model=model.add(H_Trans(),8,0,2);
 
 model.g_dir=[0;-1;0];
 
+model.b=[10;10];
+
 disp('Calculating Dynamics');
 model = model.calculateDynamics();
 
@@ -37,5 +39,5 @@ noise=@(a,t)0.02*randn(size(a));
 
 options = odeset('RelTol',1e-4,'AbsTol',1e-4.*ones(numel(model.q)*2,1));
 
-model.simulate({plan,control,noise},0:.02:10,x0,options,{0,[],{'linewidth',2},[0,0,1]});
+model.simulate({plan,control,noise},0:.02:10,x0,options,{0.01,false,{0,[],{'linewidth',2},[1,1,1]}});
 

@@ -35,17 +35,11 @@ classdef Dyn_Model
     
     properties(Access=private)
         % M(q)*dd_q + V(q,d_q) + G(q) = tau
-        sym_M %Inertia Matrix  :  M(q)
-        sym_V %Coriolis Vector :  V(q,d_q)
-        sym_G %Gravity Vector  :  G(q)
+        func_M %Inertia Matrix  :  M(q)
+        func_V %Coriolis Vector :  V(q,d_q)
+        func_G %Gravity Vector  :  G(q)
         
-        sym_invM %M^-1
-        
-        func_M
-        func_V
-        func_G
-        func_invM
-        
+        func_invM %M^-1
         func_fDyn
         func_iDyn
         
@@ -169,14 +163,14 @@ classdef Dyn_Model
 
         function val = M(obj,q)
             if nargin<2
-                val=obj.sym_M;
+                val=obj.func_M(obj.q);
             else
                 val=obj.func_M(q);
             end
         end
         function val = V(obj,q,d_q)
             if nargin<2
-                val=obj.sym_V;
+                val=obj.func_V(obj.q,obj.d_q);
             elseif nargin<3
                 val=obj.func_V(q,obj.d_q);
             else
@@ -185,7 +179,7 @@ classdef Dyn_Model
         end
         function val = G(obj,q)
             if nargin<2
-                val=obj.sym_G;
+                val=obj.func_G(obj.q);
             else
                 val=obj.func_G(q);
             end
@@ -193,7 +187,16 @@ classdef Dyn_Model
         
         function val = invM(obj,q)
             if nargin<2
-                val=obj.sym_invM;
+            	q=obj.q;
+            end
+            
+            if isempty(obj.func_invM)
+                M=obj.M(q);
+                if rank(M)<min(size(M))
+                    val=pinv(M);
+                else
+                    val=inv(M);
+                end
             else
                 val=obj.func_invM(q);
             end
@@ -259,42 +262,52 @@ classdef Dyn_Model
                 K=K+sum(Kr);
             end
             
-            
-            
+            %Form Lagrangian and Euler-Lagrange
             L=K-P;
             E_L=sym(zeros(size(obj.q)));
             for i=1:numel(obj.q)
                 E_L(i)=obj.diffT(diff(L,obj.d_q(i)))-diff(L,obj.q(i));
             end
-            E_L=simplify(vpa(E_L));
+            E_L=vpa(E_L);
+            
+%             obj.func_EL = createFunction(E_L,...
+%                 {obj.q,obj.d_q,obj.dd_q});
             
             % Get the Matrices
-            obj.sym_G=subs(E_L,[obj.dd_q,obj.d_q],[zeros(size(obj.dd_q)),zeros(size(obj.d_q))]);
-            obj.sym_V=subs(E_L,obj.dd_q,zeros(size(obj.dd_q)))-obj.sym_G;
+            sym_G=subs(E_L,[obj.dd_q,obj.d_q],[zeros(size(obj.dd_q)),zeros(size(obj.d_q))]);
+            sym_V=subs(E_L,obj.dd_q,zeros(size(obj.dd_q)))-sym_G;
             
-            obj.sym_M=E_L-obj.sym_V-obj.sym_G;
-            [obj.sym_M,~]=equationsToMatrix(obj.sym_M,obj.dd_q);
+            sym_M=E_L-sym_V-sym_G;
+            [sym_M,~]=equationsToMatrix(sym_M,obj.dd_q);
             
-            if isequal(obj.sym_M,zeros(size(obj.sym_M)))
-                obj.sym_invM=obj.sym_M;
-            else
-                obj.sym_invM=inv(obj.sym_M);
-            end
-            obj.sym_G=simplify(obj.sym_G);
-            obj.sym_V=simplify(obj.sym_V);
-            obj.sym_M=simplify(obj.sym_M);
-            obj.sym_invM=simplify(obj.sym_invM);
-
+            sym_G=simplify(sym_G);
+            sym_V=simplify(sym_V);
+            sym_M=simplify(sym_M);
+            
             % Create the Functions
-            obj.func_M=createFunction(obj.sym_M,obj.q);
-            obj.func_V=createFunction(obj.sym_V,{obj.q,obj.d_q});
-            obj.func_G=createFunction(obj.sym_G,obj.q);
-            obj.func_invM=createFunction(obj.sym_invM,obj.q);
+            obj.func_M=createFunction(sym_M,obj.q);
+            obj.func_V=createFunction(sym_V,{obj.q,obj.d_q});
+            obj.func_G=createFunction(sym_G,obj.q);
             
             obj.func_iDyn=createFunction(E_L+obj.b.*obj.d_q,...
                 {obj.q,obj.d_q,obj.dd_q});
-            obj.func_fDyn=createFunction(obj.invM*(obj.tau-obj.V-obj.G-obj.b.*obj.d_q),...
-                {obj.q,obj.d_q,obj.tau});
+            
+            if(min(size(sym_M)<5))
+                if rank(sym_M)<min(size(sym_M))
+                    sym_invM=pinv(sym_M);
+    %                 sym_invM=sym_M.'/(sym_M*sym_M.');
+                else
+                    sym_invM=inv(sym_M);
+                end
+
+                obj.func_invM=createFunction(sym_invM,obj.q);
+
+                obj.func_fDyn=createFunction(sym_invM*(obj.tau-sym_V-sym_G-obj.b.*obj.d_q),...
+                    {obj.q,obj.d_q,obj.tau});
+            
+            else
+                obj.func_fDyn=@(q,d_q,tau)obj.M(q)\(tau-obj.V(q,d_q)-obj.G(q)-obj.b.*d_q);
+            end
         end
         
         function [ode_func,d_func] = ODE(obj,d_func,c_func,n_func)
@@ -364,8 +377,8 @@ classdef Dyn_Model
             sz=size(q);
             
             obj.val_q=q;
-            obj.val_d_q=sym('d_q',sz);
-            obj.val_dd_q=sym('dd_q',sz);
+            obj.val_d_q=sym('d_q',sz,'real');
+            obj.val_dd_q=sym('dd_q',sz,'real');
             
             for i=1:sz
                 obj.val_d_q(i)=sym(strcat('d_',char(q(i))),'real');

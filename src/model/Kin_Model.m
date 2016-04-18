@@ -22,7 +22,7 @@ classdef Kin_Model < handle
         
         T_matrices
         
-        sym_lambda = sym('lambda');
+        sym_lambda = sym('lambda','real');
         
         f_kin_func
         
@@ -90,7 +90,7 @@ classdef Kin_Model < handle
             
             %baisc fsolve
             function value = basicFSolve()
-                options = optimoptions(@fsolve,'Display','iter',...
+                options = optimoptions(@fsolve,'Display','none',...
                     'Algorithm','trust-region-reflective',...
                     'TolFun',1e-8,'Jacobian','off');
                 [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
@@ -314,38 +314,32 @@ classdef Kin_Model < handle
             end
         end
         
-        function simulate(obj,q,drawFrames,ax,plotArgs,viewArgs)
+        function simulate(obj,q,delay,trace,drawArgs)
             if nargin<2 || isempty(q)
                 q=zeros(size(obj.q));
             end
             
-            if nargin<3 || isempty(drawFrames)
-                drawFrames=0;
+            if nargin<3 || isempty(delay)
+                delay=0.001;
             end
             
-            if nargin<4 || isempty(ax)
+            if nargin<4 || isempty(trace)
+                trace=false;
+            end
+            
+            if nargin<5 
+                drawArgs={};
+            end
+            
+            if nargin<5 || isempty(drawArgs)||isempty(drawArgs{2})
                 ax=gca;
             end
             ax.NextPlot='replacechildren';
             
-            if nargin<5 || isempty(plotArgs)
-                plotArgs={};
-            end
-            
-            if nargin<6 || isempty(viewArgs)
-                viewArgs=[];
-            end
-            
-            if drawFrames>0
-                p=0.01;
-            else
-                p=0.0001;
-            end
-            
             n=size(q,2);
             for i=1:n
-                obj.draw(q(:,i),drawFrames,ax,plotArgs,viewArgs);
-                pause(p);
+                obj.draw(q(:,i),drawArgs{:});
+                pause(delay);
             end
         end
     end
@@ -355,8 +349,8 @@ classdef Kin_Model < handle
             sz=size(q);
             
             obj.val_q=q;
-            obj.val_d_q=sym('d_q',sz);
-            obj.val_dd_q=sym('dd_q',sz);
+            obj.val_d_q=sym('d_q',sz,'real');
+            obj.val_dd_q=sym('dd_q',sz,'real');
             
             for i=1:sz(1)
                 obj.val_d_q(i)=sym(strcat('d_',char(q(i))),'real');
@@ -422,10 +416,10 @@ classdef Kin_Model < handle
             end
             
             [h, w] = size(M);
-            DH = sym('DH',[h w]);
+            DH = sym('DH',[h w],'real');
             for r = 1:h
                 for c = 1:w
-                    DH(r,c) = sym(M{r,c});
+                    DH(r,c) = sym(M{r,c},'real');
                 end
             end
             
@@ -528,11 +522,11 @@ classdef Kin_Model < handle
         function equ=diffT(obj,equ)
             sz=size(obj.q);
             
-            t=sym('t,real');
+            t=sym('t','real');
             
-            q_t=sym('q_t',sz);
-            d_q_t=sym('d_q_t',sz);
-            dd_q_t=sym('dd_q_t',sz);
+            q_t=sym('q_t',sz,'real');
+            d_q_t=sym('d_q_t',sz,'real');
+            dd_q_t=sym('dd_q_t',sz,'real');
             
             for i=1:sz
                 q_t(i) = sym(strcat(char(obj.q(i)),'(',char(t),')'),'real');

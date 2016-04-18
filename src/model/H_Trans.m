@@ -115,7 +115,7 @@ classdef H_Trans
         end
         
         function value = getRotVel(obj,var)
-           w=simplify(diff(obj.Rot,var)*obj.Rot.');
+           w=diff(obj.Rot,var)*obj.Rot.';
            value=[w(3,2);w(1,3);w(2,1)];
         end
 		
@@ -219,7 +219,7 @@ classdef H_Trans
 %                 plot3(ax,[p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'Color','k','linewidth',2,plotArgs{:});
 %                 plot3(ax,[p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'Color','k','linewidth',2,plotArgs{:});
 
-                h=plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'k',...
+                plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'k',...
                     [p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'k',...
                     [p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'k',plotArgs{:});
             else    
@@ -227,7 +227,7 @@ classdef H_Trans
 %                 plot3(ax,[p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'Color','g','linewidth',2,plotArgs{:});
 %                 plot3(ax,[p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'Color','b','linewidth',2,plotArgs{:});
 
-                 h=plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'r',...
+                 plot3(ax,[p(1);p(1)+scale*r(1,1)],[p(2);p(2)+scale*r(2,1)],[p(3);p(3)+scale*r(3,1)],'r',...
                     [p(1);p(1)+scale*r(1,2)],[p(2);p(2)+scale*r(2,2)],[p(3);p(3)+scale*r(3,2)],'g',...
                     [p(1);p(1)+scale*r(1,3)],[p(2);p(2)+scale*r(2,3)],[p(3);p(3)+scale*r(3,3)],'b',plotArgs{:});
             end

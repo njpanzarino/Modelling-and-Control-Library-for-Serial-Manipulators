@@ -26,7 +26,7 @@ function vals = evalf( func, varargin )
     function in=getInputs(index)
         in=cell(n_in,1);
         for i2=1:n_in
-            in{i2}=zeros(sz_in{i2}(2:end));
+            in{i2}=zeros([sz_in{i2}(2:end),1]);
             in{i2}(:)=inputs{i2}(index,:);
         end
     end

@@ -26,24 +26,6 @@ classdef Planner
             d_func=matlabFunction(desired_t,'Vars',sym_t);
         end
         
-        function d_func = fromList(desired_list,t0,step)
-            n=numel(desired_list);
-            
-            d_func=@fromList;
-            function desired = fromList(t)
-                index=(t-t0)/step;
-                i1=floor(index);
-                i2=ceil(index);
-                if i1==i2
-                    desired=desired_list(index);
-                elseif i2>n
-                    desired=desired_list(n);
-                else
-                    desired=Planner.interpolate(t,i1*step,desired_list(i1),i2*step,desired_list(i2));
-                end
-            end
-        end
-        
         function d_func = spline(desired_list,t_range)
             n=numel(desired_list);
             sz=size(desired_list{1});
@@ -232,10 +214,9 @@ classdef Planner
             end
             function func = mapVel
                 sym_q=equ_q;
-                [sym_d_q,d_vars,~]=Planner.diffT(sym_q,vars);
-%                 [sym_dd_q,~,~]=Planner.diffT(sym_d_q,vars);
+                [sym_d_q,q,d_q,~]=diffT(sym_q,vars);
                 
-                func=matlabFunction(sym_d_q,'Vars',{[vars,d_vars]});
+                func=matlabFunction(sym_d_q,'Vars',{[q,d_q]});
             end
         end
         
@@ -283,38 +264,6 @@ classdef Planner
         
         function q = interpolate(t,t1,q1,t2,q2)
             q=(q2-q1).*((t-t1)/(t2-t1))+q1;
-        end
-        
-        function [equ,d_q,dd_q]=diffT(equ,vars,t)
-            sz=size(vars);
-            if nargin<3||isempty(t)
-                t=sym('t','real');
-            end
-            
-            d_q=sym('d_q',sz);
-            dd_q=sym('dd_q',sz);
-            
-            q_t=sym('q_t',sz);
-            d_q_t=sym('d_q_t',sz);
-            dd_q_t=sym('dd_q_t',sz);
-            for i=1:sz
-                d_q(i)=sym(strcat('d_',char(vars(i))),'real');
-                dd_q(i)=sym(strcat('dd_',char(vars(i))),'real');
-                
-                q_t(i) = sym(strcat(char(vars(i)),'(',char(t),')'),'real');
-                d_q_t(i) = diff(q_t(i),t);
-                dd_q_t(i) = diff(q_t(i),t,2);
-            end
-            
-            equ=subs(equ,vars,q_t);
-            equ=subs(equ,d_q,d_q_t);
-            equ=subs(equ,dd_q,dd_q_t);
-            
-            equ=diff(equ,t);
-            
-            equ=subs(equ,dd_q_t,dd_q);
-            equ=subs(equ,d_q_t,d_q);
-            equ=subs(equ,q_t,vars);
         end
         
     end
