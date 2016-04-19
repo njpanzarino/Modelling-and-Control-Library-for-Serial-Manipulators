@@ -130,7 +130,7 @@ options = odeset('RelTol',1e-4,'AbsTol',1e-4.*ones(numel(model.q)*2,1));
 model.simulate({plan,control,noise},t_range,x0,options,{0.01,false,{0,[],{'linewidth',2},[1,1,1]}});
 
 %% Workspace Planning
-clear all; clc;
+close all; clc;
 
 t=sym('t','real');
 t_range=0:0.02:10;
@@ -147,18 +147,20 @@ kin=Kin_Model.fromDH([q(1),1,0,pi/2;
                       q(5),0.1,0,-pi/2;
                       q(6),0.1,0,pi/2],q);
 
-
+disp('Creating Path');
 r=.25;
 p0=[.75;.75;.75];
 z_t=r-2*r/t_range(numel(t_range))*t+p0(3);
 r_t=sqrt(r^2-(z_t-p0(3))^2);
 p_d=[p0(1)+r_t*cos(10*t);p0(2)+r_t*sin(10*t);z_t];
+
 x_d=[NaN,NaN,NaN,p_d(1);
      NaN,NaN,NaN,p_d(2);
      NaN,NaN,NaN,p_d(3);
      NaN,NaN,NaN,NaN];
 
-plan=Planner.fromSym(H_Trans(x_d).H);
+plan=Planner.fromSym(x_d);
+disp('Converting to Joint Space');
 plan=Planner.toJointSpace_func(plan,t_range,[],@kin.inverse_kin);
 
 D=evalf(plan,t_range.');
