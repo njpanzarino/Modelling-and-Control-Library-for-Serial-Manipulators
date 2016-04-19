@@ -116,7 +116,7 @@ classdef H_Trans
         
         function value = getRotVel(obj,var)
            w=diff(obj.Rot,var)*obj.Rot.';
-           value=[w(3,2);w(1,3);w(2,1)];
+           value=H_Trans.deskew(w);
         end
 		
         function [Jg,Ja] = getJacobians(obj,q)
@@ -277,6 +277,9 @@ classdef H_Trans
                     0,0,0,1]);
         end
         
+        function value = toVelocityWrench(H,d_H)
+            value=[d_H.Trans;H_Trans.deskew(d_H.Rot*H.Rot.')];
+        end
     end
     
     methods (Static,Access=private)
@@ -287,6 +290,16 @@ classdef H_Trans
             sin(theta),cos(theta)*cos(alpha),-cos(theta)*sin(alpha),a*sin(theta);...
             0,sin(alpha),cos(alpha),d;...
             0,0,0,1];
+        end
+        
+        function rot = skew(val)
+            rot =  [0,      -val(3),    val(2);
+                    val(3),  0,         -val(1);
+                    -val(2), val(1),    0];
+        end
+        
+        function val = deskew(rot)
+            val=[rot(3,2);rot(1,3);rot(2,1)];
         end
         
         function M = single( input )

@@ -4,7 +4,7 @@ classdef Planner
 %       function d_func = XXXXXX(args)
 %   
 %   d_func should be an anonymous function of the form:
-%       function desired = d_func(t)
+%       function desired = d_func(t,actual)
 %
 %   desired should be of the form [q,d_q,dd_q]
 
@@ -19,9 +19,9 @@ classdef Planner
                 end
             end
             
-            desired_t(:,1)=sym_q;
-            desired_t(:,2)=diff(sym_q,sym_t);
-            desired_t(:,3)=diff(desired_t(:,2),sym_t);
+            desired_t(:,1,:)=sym_q;
+            desired_t(:,2,:)=diff(sym_q,sym_t);
+            desired_t(:,3,:)=diff(desired_t(:,2,:),sym_t);
 
             d_func=matlabFunction(desired_t,'Vars',sym_t);
         end
@@ -187,8 +187,8 @@ classdef Planner
             end
         end
         
-        function d_func = toJointSpace(d_func,equ_q,vars,t_range)
-            equ_q=equ_q(:,1);
+        function d_func = toJointSpace_sym(d_func,sym_q,vars,t_range)
+            sym_q=sym_q(:,1);
             vars=reshape(vars,[],1);
             
             map_pos=mapPos;
@@ -208,16 +208,40 @@ classdef Planner
             d_func=Planner.spline(desired,t_range);
             
             function func = mapPos
-                sym_q=equ_q;
-                
                 func=matlabFunction(sym_q,'Vars',{vars});
             end
             function func = mapVel
-                sym_q=equ_q;
                 [sym_d_q,q,d_q,~]=diffT(sym_q,vars);
                 
                 func=matlabFunction(sym_d_q,'Vars',{[q,d_q]});
             end
+        end
+        function d_func = toJointSpace_func(d_func,t_range,x0,inv_kin,inv_vel,inv_acc)
+%             t_range=t0:t_step:tf;
+            if nargin<5
+                inv_vel=[];
+            end
+            if nargin<6
+                inv_acc=[];
+            end
+            
+            n=numel(t_range);
+            desired=cell(n,1);
+            prevPos=x0;
+            for i=1:n
+                workspace_d=d_func(t_range(i));
+                pos=squeeze(workspace_d(:,1,:));
+                desired{i}=inv_kin(pos,prevPos);
+                prevPos=desired{i};
+                if ~isempty(inv_vel) && (i==1||i==n)
+                    vel=squeeze(workspace_d(:,2,:));
+                    desired{i}=[desired{i},inv_vel(pos,...
+                        H_Trans.toVelocityWrench(H_Trans(pos),H_Trans(vel)))];
+                end
+            end
+            
+            d_func=Planner.spline(desired,t_range);
+            
         end
         
         function d_func = join(funcs)
@@ -239,6 +263,24 @@ classdef Planner
                         desired(i+r-1,:)=g(r,:);
                     end
                 end
+            end
+        end
+        function d_func = piecewise(funcs,t_span)
+            min_step = min(diff(t_span));
+            n=numel(t_span);
+            n_funcs=numel(funcs);
+            
+            d_func=@piecewise;
+            
+            function desired = piecewise(t)
+                start=t/min_step;
+                for i=start:n
+                    if t<t_span(i)
+                        desired=funcs{i}(t);
+                        return;
+                    end
+                end
+                desired=funcs{n_funcs}(t);
             end
         end
     end

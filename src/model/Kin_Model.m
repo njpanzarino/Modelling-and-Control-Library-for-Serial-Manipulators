@@ -76,26 +76,40 @@ classdef Kin_Model < handle
             sz=size(d_pose);
             if isequal(sz,[4,4])
                 asWrench=false;
+            elseif isequal(numel(d_pose),16)
+                asWrench=false;
+                d_pose=reshape(d_pose,4,4);
             elseif isequal(sz,[6,1])
                 asWrench=true;
             else
                 error('POSE must be 4x4 homogeneous transformation matrix or 6x1 wrench');
             end
             
-            if nargin<3
+            if nargin<3 || isempty(q0)
                 q0=zeros(size(obj.q));
             end
+            
+            indeces=find(isfinite(d_pose));
+            valid_pose=d_pose(indeces);
             
             value=basicFSolve;
             
             %baisc fsolve
             function value = basicFSolve()
+                warning('off','optim:fsolve:FewerFunsThanVars');
                 options = optimoptions(@fsolve,'Display','none',...
                     'Algorithm','trust-region-reflective',...
                     'TolFun',1e-8,'Jacobian','off');
-                [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
+                [value,fval,flag]=fsolve(@solveFunc,q0,options);
                 if flag>1
-                    [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),value,options);
+                    [value,fval,flag]=fsolve(@solveFunc,value,options);
+                end
+                
+                warning('on','optim:fsolve:FewerFunsThanVars');
+                
+                function val = solveFunc(q)
+                    val = obj.forward_kin(q,asWrench);
+                    val = val(indeces)-valid_pose;
                 end
             end
             
@@ -336,9 +350,22 @@ classdef Kin_Model < handle
             end
             ax.NextPlot='replacechildren';
             
+            if trace
+                trace_pts=evalf(@obj.forward_kin,q.');
+                trace_pts=trace_pts(:,1:3,4);
+            end
+            
             n=size(q,2);
             for i=1:n
                 obj.draw(q(:,i),drawArgs{:});
+                if trace
+                    hchek = ishold;
+                    hold on
+                    plot3(trace_pts(1:i,1),trace_pts(1:i,2),trace_pts(1:i,3))
+                    if hchek == 0
+                        hold off
+                    end
+                end
                 pause(delay);
             end
         end

@@ -22,6 +22,78 @@ classdef Controller
             end
         end
 
+        function tau = RobustComputedTorque(K,Lambd)
+            
+            m = 0.15; r = 0.15; g = 9.8;
+            % the nominal parameter vector b0 is
+
+            B = 0.1;
+            I = m*r^2;
+            G = m*g*r;
+            b0 = [ I;B;G ];
+            
+            epsilon=0.001;
+            rho = .004; % see eq(27) in the paper.
+            
+            tau = @RobustComputedTorque;
+            
+            function tau = RobustComputedTorque(desired,actual)
+                desired=reshape(desired,[],3);
+                actual=reshape(actual,[],2);
+                
+                [q,d_q]=Controller.interpretInput(actual);
+                [q_d,d_q_d,dd_q_d]=Controller.interpretInput(desired);
+                
+                % ep=q_d-q;
+                % ev=d_q_d-d_q;
+                
+                ep=q-q_d;
+                ev=d_q-d_q_d;
+                
+                
+                r = ev + Lambd*ep;
+                v = d_q_d - Lambd*ep;
+                a = dd_q_d - Lambd*ev;
+
+                Y2=[a,v,sin(q)];
+                
+                if norm(Y2'*r) > epsilon
+                    u = -rho* Y2'*r/norm(Y2'*r)
+                else
+                    u= - rho* Y2'*r/epsilon;
+                end
+                tau = Y2*(b0 + u)- K*r;
+            end
+        end
+
+        function tau = AdaptiveSimple(inv_dyn_func,Kd,delta,Kpi, dt)
+        % Operate on the assumption that the "true" model will be a linear
+        % function of our estimated model.
+        % Done per 8.5.4 "Adaptive Control" from
+        % Robotics Modelling, Planning, and Control.
+
+            tau = @Adaptive;
+            pihat = [1; 0];
+
+            function tau = Adaptive(desired,actual)
+                actual=reshape(actual,[],2);
+                [q,d_q]=Controller.interpretInput(actual);
+                [q_d,d_q_d,dd_q_d]=Controller.interpretInput(desired);
+
+                ep=q_d-q;
+                ev=d_q_d-d_q;
+
+                u=inv_dyn_func(q,d_q,dd_q_d);
+                Y = [u ones(size(u))];
+                sigma = ev + delta * ep;
+                
+                pihatdot = Kpi * transpose(Y) * sigma;
+                pihat = pihat + pihatdot * dt;
+                
+                tau = Y * pihat + Kd * sigma;
+            end
+        end
+        
         function tau = PID(Kp,Ki,Kd)
 
             sum=zeros(size(Kp));
@@ -29,7 +101,7 @@ classdef Controller
 
             function tau = PID(desired,actual)
                 [q,d_q]=Controller.interpretInput(actual);
-                [q_d,d_q_d]=Controller.interpretInput(desired);;
+                [q_d,d_q_d,~]=Controller.interpretInput(desired);;
 
                 ep=q_d-q;
                 ev=d_q_d-d_q;
@@ -46,8 +118,8 @@ classdef Controller
             tau = @PI;
 
             function tau = PI(desired,actual)
-                [q]=Controller.interpretInput(actual);
-                [q_d]=Controller.interpretInput(desired);
+                [q,~]=Controller.interpretInput(actual);
+                [q_d,~,~]=Controller.interpretInput(desired);
 
                 ep=q_d-q;
                 
@@ -63,7 +135,7 @@ classdef Controller
 
             function tau = PD(desired,actual)
                 [q,d_q]=Controller.interpretInput(actual);
-                [q_d,d_q_d]=Controller.interpretInput(desired);
+                [q_d,d_q_d,~]=Controller.interpretInput(desired);
 
                 ep=q_d-q;
                 ev=d_q_d-d_q;
@@ -77,8 +149,8 @@ classdef Controller
             tau = @P;
 
             function tau = P(desired,actual)
-                [q]=Controller.interpretInput(actual);
-                [q_d]=Controller.interpretInput(desired);
+                [q,~]=Controller.interpretInput(actual);
+                [q_d,~,~]=Controller.interpretInput(desired);
 
                 ep=q_d-q;
 
@@ -88,12 +160,12 @@ classdef Controller
         
         function tau = I(Ki)
 
-            sum=zeros(size(Kp));
+            sum=zeros(size(Ki));
             tau = @I;
 
             function tau = I(desired,actual)
-                [q]=Controller.interpretInput(actual);
-                [q_d]=Controller.interpretInput(desired);
+                [q,~]=Controller.interpretInput(actual);
+                [q_d,~,~]=Controller.interpretInput(desired);
 
                 ep=q_d-q;
                 sum=sum+ep;
