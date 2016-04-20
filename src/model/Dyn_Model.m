@@ -1,28 +1,27 @@
 classdef Dyn_Model
-    %Dyn_Model Representation of a Dynamical Model of a Serial Robotic
-    %Manipulator
-    %   Detailed explanation goes here
+    % Dyn_Model Representation of a Dynamical Model of a Serial Robotic
+    % Manipulator
     
     properties
-        g_val=9.81;         %gravity magnitude
-        g_dir=[0,0,-1];     %gravity direction
+        g_val=9.81;         % gravity magnitude
+        g_dir=[0,0,-1];     % gravity direction
         
-        b %damping for each joint (tau= b*d_q)
+        b % damping for each joint (tau= b*d_q)
     end
     
     properties(Dependent)
-        g %gravity vector (combined magnitude and direction)
+        g % gravity vector (combined magnitude and direction)
      end
     
     properties(SetAccess = private)
-        kin %Kinematic Model of a serial Robot Manipulator
+        kin % Kinematic Model of a serial Robot Manipulator
         
-        I = struct('val',{},'loc',{}) %Inertias relative to base frame
-        Mass = struct('val',{},'loc',{}); %Mass value and location relative to base frame
+        I = struct('val',{},'loc',{}) % Inertias relative to base frame
+        Mass = struct('val',{},'loc',{}); % Mass value and location relative to base frame
         
-        k %stiffness for each joint 
+        k % stiffness for each joint 
         
-        tau %symbolic represantaion of joint control values, used in symbolic calculation of forward_dynamics
+        tau % symbolic represantaion of joint control values, used in symbolic calculation of forward_dynamics
         t=sym('t');
         
     end
@@ -50,15 +49,24 @@ classdef Dyn_Model
     
     methods
         function obj = Dyn_Model(kin)
+            %Create an empty dynamic model, building off of a kinematic
+            %model
             if nargin>0
                 obj=Dyn_Model.fromKin_Model(kin);
             end
         end
         
         function obj = clearMass(obj)
+            %clear all mass properties
             obj.Mass = struct('val',[],'loc',[]);
         end
         function obj = addMass(obj,value,location,frame)
+            %Add a mass to the system 
+            %   value: the value of the mass
+            %   location: the position of the mass, specified as an [x;y;z] vector
+            %   frame: (OPTIONAL) a number corresponding the the frame the mass is
+            %   conected to. ex. 0 is the base frame. For a manipulator
+            %   with 'n' joints, te end effector frame is frame 'n'
             location=reshape(location,numel(location),1);
             if nargin>3
                 location=obj.kin.T(0,frame).H*[location;1];
@@ -72,9 +80,20 @@ classdef Dyn_Model
         end
         
         function obj = clearI(obj)
+            %clear inertial elements
             obj.I = struct('val',[],'loc',[]);
         end
         function obj = addI(obj,value,rot,frame)
+            %Add Inertia to the system 
+            %   value: the value of the Inertia tensor
+            %       3x3: the inertia tensor
+            %       1x1: inertia is all zeros with 'value' in the 3rd row,
+            %       3rd column
+            %   rot: the orientation of the inertial reference frame,
+            %   specified as a 3x3 rotation matrix
+            %   frame: (OPTIONAL) a number corresponding the the frame the mass is
+            %   conected to. ex. 0 is the base frame. For a manipulator
+            %   with 'n' joints, te end effector frame is frame 'n'
             if ~isequal(size(value),[3,3])
                 v=value;
                 value=sym(zeros(3,3));
@@ -92,6 +111,12 @@ classdef Dyn_Model
         end
         
         function obj = add(obj,T_form,m,I,frame)
+            %Add a mass and Inertia to the system 
+            %   T_form: Homogeneous transform representing position and
+            %   orientation of the mass
+            %   m: value of mass
+            %   I: inertia tensor or inertia about Z
+            %   frame: number of frame that T_form is relative to
             if exist('m','var')>0
                 if exist('frame','var')>0
                     obj=obj.addMass(m,T_form.Trans,frame);
@@ -109,11 +134,14 @@ classdef Dyn_Model
             end
         end
         function obj = clear(obj)
+            %clear all mass and inertia values
             obj=obj.clearMass;
             obj=obj.clearI;
         end
         
         function val=inverse_dyn(obj,q,d_q,dd_q)
+            %Determine joint forces/torques required to achieve joint
+            %accelerations with given joint positions and velocities
             switch nargin
                 case 1
                     val=obj.func_iDyn(obj.q,obj.d_q,obj.dd_q);
@@ -124,21 +152,10 @@ classdef Dyn_Model
                 case 4
                     val=obj.func_iDyn(q,d_q,dd_q);
             end
-%             val=zeros(size(obj.q));
-%             
-%             if nargin<3
-%                 d_q=zeros(size(obj.q));
-%             end
-%             if nargin<4
-%                 dd_q=zeros(size(obj.q));
-%             else
-%                 val=val+obj.M(q)*dd_q;
-%             end
-%             
-%             val=val+obj.V(q,d_q)+obj.G(q)+obj.b.*d_q;
-%             val=vpa(val);
         end
         function dd_q=forward_dyn(obj,q,d_q,tau)
+            %Determine joint accelerations given joint positions and
+            %velocities and applied joint forces/torques.
             switch nargin
                 case 1
                     dd_q=obj.func_fDyn(obj.q,obj.d_q,obj.tau);
@@ -149,19 +166,12 @@ classdef Dyn_Model
                 case 4
                     dd_q=obj.func_fDyn(q,d_q,tau);
             end
-            
-%             if nargin<3
-%                 d_q=zeros(size(obj.q));
-%             end
-%             if nargin<4
-%                 tau=zeros(size(obj.q));
-%             end
-%             
-%             dd_q=obj.invM(q)*(tau-obj.V(q,d_q)-obj.G(q)-obj.b.*d_q);
-%             dd_q=vpa(dd_q);
         end
 
         function val = M(obj,q)
+            %Inertial Matrix.
+            %   q: values of joint variables. If not specified, symbolic
+            %   variables are used instead.
             if nargin<2
                 val=obj.func_M(obj.q);
             else
@@ -169,6 +179,10 @@ classdef Dyn_Model
             end
         end
         function val = V(obj,q,d_q)
+            %Coriolois/Centripital Vector.
+            %   q: values of joint variables. If not specified, symbolic
+            %   variables are used instead.
+            %   d_q: values of first time deritative of joint variables. If not specified, symbolic variables are used instead.
             if nargin<2
                 val=obj.func_V(obj.q,obj.d_q);
             elseif nargin<3
@@ -178,6 +192,9 @@ classdef Dyn_Model
             end
         end
         function val = G(obj,q)
+            %Gravity Vector.
+            %   q: values of joint variables. If not specified, symbolic
+            %   variables are used instead.
             if nargin<2
                 val=obj.func_G(obj.q);
             else
@@ -186,6 +203,9 @@ classdef Dyn_Model
         end
         
         function val = invM(obj,q)
+            %Inverse of Mass/Inertia Matrix.
+            %   q: values of joint variables. If not specified, symbolic
+            %   variables are used instead.
             if nargin<2
             	q=obj.q;
             end
@@ -203,6 +223,9 @@ classdef Dyn_Model
         end
         
         function obj = calculateDynamics(obj)
+            %Compute the dynamics of the manipulator, including forward and
+            %inverse dynamics and M, V, and G matrices. Call this method
+            %after adding dynamic values and before using dynamic equations
             P=0;K=0;
             
             if size(obj.Mass,2)>0
@@ -311,6 +334,19 @@ classdef Dyn_Model
         end
         
         function [ode_func,d_func] = ODE(obj,d_func,c_func,n_func)
+            %create an ODE that can be used to simulate the model
+            %   d_func: desired = desired_func(t,actual)
+            %   c_func: tau = control_func(desired,actual)
+            %   n_func: noise = noise_func(actual,tau)  **(Optional)**
+            %       noise = actual response - expected response
+            %       noise_func is an optional parameter which may be added to model
+            %           uncertainty in the system. Similar functionality can be
+            %           achieved by building noise into the response_fun instead of
+            %           providing a noise_func
+            %
+            %   actual = [q,d_q]
+            %   desired = [q_d,d_q_d,dd_q_d]   
+            
             n=nargin;
             if n<4
                 n_func=[];
@@ -332,6 +368,14 @@ classdef Dyn_Model
         end
         
         function simulate(obj,ode_args,t_span,q0,ode_options,draw_options)
+            %used to simulate and visualize a model under specified conditions
+            %   ode_args: cell array containing variables passed to
+            %   Dyn_Model.ODE function
+            %   t_span: desired time span. passed to ode45
+            %   q0: initial joint positions and velocities
+            %   ode_options: ode45 options
+            %   draw_options: cell array containing values passed to plot3
+            
             if nargin<6
                 ode_options=[];
             end

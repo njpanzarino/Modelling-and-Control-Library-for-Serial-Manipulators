@@ -1,17 +1,17 @@
 classdef H_Trans
     %H_Trans Provides helpful methods for creating and decomposing Homogeneous Transformation matrices
-    %   Detailed explanation goes here
     
     properties
+        %The 4x4 Homogeneous Transformation in matrix form
         H = sym(eye(4));
     end
     
     properties (Dependent)
-        Trans
-        Rot
-        Euler   %ZYX Euler Angles
-        Wrench
-        Column
+        Trans   %Get/Set 3x1 column vector of positions
+        Rot     %Get/Set the 3x3 Rotation matrix
+        Euler   %Get/Set ZYX Euler Angles [Rx;Ry;Rz]
+        Wrench  %Get/Set 6x1 wrench consisting of position and euler angles
+        Column  %Get/Set this transformation as a 16x1 column vector
     end
     
     properties (Access=private)
@@ -20,6 +20,18 @@ classdef H_Trans
     
     methods
         function obj = H_Trans(varargin)
+            %H_Trans: Creates a Homogeneous Transformation from the input
+            %variables. Transformation depends on the size of the input
+            %variable. If multiple values are entered, a transformation
+            %will be created for each and the result will be the value of
+            %them multiplied in the order they were input.
+            %   3x1 or 3x3: Translation in [X,Y,Z] with no rotation
+            %   3x3: Rotation with specified Rotation matrix and no
+            %   translation
+            %   6x1: Wrench with 1st 3 elements translation and last 3 as
+            %   euler angles
+            %   4x4: Creates a transformation from the specified matrix
+            
 			if nargin>0
 				obj.H=H_Trans.single(varargin{1});
 				if nargin>1
@@ -87,8 +99,10 @@ classdef H_Trans
             value=reshape(obj.H,16,1);
         end
         
-        %w=B*diff(euler)
         function value = B(obj)
+            %Used to produce a matrix that translates rate of change of
+            %Euler angles to rotational velocity
+            %   w=B*diff(euler)
             t1=sym('t1','real');
             t2=sym('t2','real');
             t3=sym('t3','real');
@@ -100,8 +114,11 @@ classdef H_Trans
                 H_.getRotVel(t1)];
             value=subs(B_,[t1;t2;t3],obj.Euler);
         end
-        %diff(euler)=inv_B*w
+
         function value = inv_B(obj)
+            %Used to produce a matrix that translates rotational velocity
+            %to rate of change of Euler angles
+            %   diff(euler)=inv_B*w
             t1=sym('t1','real');
             t2=sym('t2','real');
             t3=sym('t3','real');
@@ -115,11 +132,15 @@ classdef H_Trans
         end
         
         function value = getRotVel(obj,var)
+            %Used to find the rotational velocity of the transformation with
+            %respect to the given variable
            w=diff(obj.Rot,var)*obj.Rot.';
            value=H_Trans.deskew(w);
         end
 		
         function [Jg,Ja] = getJacobians(obj,q)
+            %Returns both the geometric and analytical jacobian with
+            %respect to a column vector of variables
             Jg= sym(zeros(6,size(q,1)));
             Ja= Jg;
             w=obj.Wrench;
@@ -135,6 +156,8 @@ classdef H_Trans
         end
         
         function value = getJacobian(obj,q)
+            %Returns the geometric Jacobian of the transformation with
+            %respect to a column vector of variables
             value = sym(zeros(6,size(q,1)));
             for i=1:size(q,1)
                 value(1:3,i) = diff(obj.Trans,q(i));
@@ -144,18 +167,21 @@ classdef H_Trans
         end
         
         function Jg = JaToJg(obj,Ja)
-            
+            %Convert analytic Jacobian to geometric Jacobian
             Ba=[eye(3),zeros(3);zeros(3),obj.B];
             
             Jg=Ba*Ja;
         end
         function Ja = JgToJa(obj,Jg)
+            %Convert geometric Jacobian to analytic Jacobian
             inv_Ba=[eye(3),zeros(3);zeros(3),obj.inv_B];
             
             Ja=inv_Ba*Jg;
         end
         
         function value = getAnalyticJacobian(obj,q)
+            %Returns the analytic Jacobian of the transformation with
+            %respect to a column vector of variables
             w=obj.Wrench;
             value = sym(zeros(6,size(q,1)));
             for i=1:size(q,1)
@@ -164,12 +190,8 @@ classdef H_Trans
             value=simplify(value);
         end
         
-        function func = getFunction(obj,input)
-            expr=obj.H;
-            func=createFunction(expr,input);
-        end
-        
         function obj = inv(obj)
+            %Fast method of inverting a homogeneous transformation matrix
 			R=obj.Rot.';
 			obj.H = [ R  -R*obj.Trans
 					 0 0 0       1     ];
@@ -192,6 +214,15 @@ classdef H_Trans
         end
         
         function draw(obj,scale,label,ax,plotArgs)
+            %plot a representation of the transformation in 3D space
+            %   scale: the length of each axis
+            %   label: a suffix to attach to each label (ex. if '1' is
+            %   passed, the frame will be labeled "F1" and the axes
+            %   'x1,y1,z1'). If no label is given, no label will be
+            %   displayed at all
+            %   ax: the axis to plot (uses gca if empty)
+            %   plotArgs: arguments to be passed into each plot function.
+            %   Specified as a cell array
             
             if nargin<2 || isempty(scale)
                 scale=1;
@@ -251,6 +282,14 @@ classdef H_Trans
     
     methods(Static)
         function obj = fromDH(DH)
+            %Create a Transformation from DH Parameters
+            %   DH: the DH parameters of the transformation, in matrix
+            %   form. 
+            %       Each row must contain four values: in the order
+            %   [theta, d, a, aplha]. 
+            %       Each column must follow the same format as the rows. The
+            %   result will be the multiplication of the transformations
+            %   generated from each row.
             obj = H_Trans();
             for i = 1:size(DH,1)
                 obj.H=obj.H*H_Trans.fromDH_single(DH(i,1),DH(i,2),DH(i,3),DH(i,4));
@@ -259,18 +298,24 @@ classdef H_Trans
         end
         
         function obj = rotX(theta)
+            %Create a transformation representing a rotation by theta about
+            %the X axis with no translation
             obj = H_Trans([1,0,0,0;
                     0,cos(theta),-sin(theta),0;
                     0,sin(theta),cos(theta),0;
                     0,0,0,1]);
         end
         function obj = rotY(theta)
+            %Create a transformation representing a rotation by theta about
+            %the Y axis with no translation
             obj = H_Trans([cos(theta),0,sin(theta),0;
                     0,1,0,0;
                     -sin(theta),0,cos(theta),0;
                     0,0,0,1]);
         end
         function obj = rotZ(theta)
+            %Create a transformation representing a rotation by theta about
+            %the Z axis with no translation
             obj = H_Trans([cos(theta),-sin(theta),0,0;
                     sin(theta),cos(theta),0,0;
                     0,0,1,0;
@@ -278,6 +323,9 @@ classdef H_Trans
         end
         
         function value = toVelocityWrench(H,d_H)
+            %Generate a 6x1 wrench using a transformation and the time
+            %derivative of that transformation. The rotational component of
+            %the wrench will be the angular velocity of transformation
             value=[d_H.Trans;H_Trans.deskew(d_H.Rot*H.Rot.')];
         end
     end

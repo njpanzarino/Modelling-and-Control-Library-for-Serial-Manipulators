@@ -2,11 +2,11 @@ classdef Kin_Model < handle
     %Kin_Model: Kinematic Model of a serial robot manipulator
     
     properties
-        q_limit
+        
     end
     
     properties(SetAccess = private)
-        n_frames
+        n_frames    %Number of frames in the model
     end
     
     properties(Dependent, SetAccess=private)
@@ -20,7 +20,7 @@ classdef Kin_Model < handle
         val_d_q  %1st time derivative of joint variables
         val_dd_q %2nd time derivative of joint variables
         
-        T_matrices
+        T_matrices  %store Transformations from each frame to each other frame
         
         sym_lambda = sym('lambda','real');
         
@@ -46,6 +46,7 @@ classdef Kin_Model < handle
     methods
         
         function value = T(obj,from,to)
+            %Access the transformation from one frame to any other
             value = obj.T_matrices{from+1,to+1};
             if isempty(value)
                 obj=obj.calculateTransformation(from,to);
@@ -54,6 +55,14 @@ classdef Kin_Model < handle
         end
         
         function value = forward_kin(obj,q,asWrench)
+            %Compute forward kinematics. find end effector position and
+            %orientation using joint variables
+            %   q: vector of joint variables. if not specified, symbolic
+            %   variables will be used
+            %   asWrench: (OPTIONAL) Default false. boolean specifying whether to return
+            %   kinematics as wrench instead of homogeneous transformation
+            %   matrix.
+            
             if nargin<2
                 q=obj.q;
             end
@@ -73,6 +82,15 @@ classdef Kin_Model < handle
             end
         end
         function value = inverse_kin(obj,d_pose,q0)
+            %Compute inverse kinematics. Find joint variables given desired
+            %end effector position and orientation.
+            %   d_pose: 4x4 homogeneous transformation matrix representing
+            %   position/orientation of end effector.
+            %   q0: initial joint variables. Start with initial postion
+            %   close to actual position to speed calculation and "steer"
+            %   algorithm towards desired result (there may be many
+            %   possible results)
+            
             sz=size(d_pose);
             if isequal(sz,[4,4])
                 asWrench=false;
@@ -100,9 +118,9 @@ classdef Kin_Model < handle
                 options = optimoptions(@fsolve,'Display','none',...
                     'Algorithm','trust-region-reflective',...
                     'TolFun',1e-8,'Jacobian','off');
-                [value,fval,flag]=fsolve(@solveFunc,q0,options);
+                [value,~,flag]=fsolve(@solveFunc,q0,options);
                 if flag>1
-                    [value,fval,flag]=fsolve(@solveFunc,value,options);
+                    [value,~,~]=fsolve(@solveFunc,value,options);
                 end
                 
                 warning('on','optim:fsolve:FewerFunsThanVars');
@@ -113,30 +131,6 @@ classdef Kin_Model < handle
                 end
             end
             
-            function value = wrenchFSolve()
-                if ~asWrench
-                    d_pose=H_Trans(d_pose).Wrench;
-                    asWrench=true;
-                end
-                options = optimoptions(@fsolve,'Display','iter',...
-                    'Algorithm','trust-region-reflective',...
-                    'TolFun',1e-8,'Jacobian','off');
-                [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),q0,options);
-                if flag>1
-                    [value,fval,flag]=fsolve(@(q)(obj.forward_kin(q,asWrench)-d_pose),value,options);
-                end
-            end
-            %Jacobian fsolve
-%             W=H_Trans(H).Wrench;
-%             options = optimoptions(@fsolve,'Display','iter',...
-%                 'Algorithm','trust-region-reflective',...
-%                 'Jacobian','on');
-%             [value,~]=fsolve(@solve_fun_J,q0,options);
-%             
-%             function [F,J] = solve_fun_J(q)
-%                 F=H_Trans(obj.forward_kin(q)).Wrench-W;
-%                 J=obj.J(q);
-%             end
             %Inverse Jacobian Method (Hill Climb)
             
             %Cyclic Coordinate Descent
@@ -160,6 +154,9 @@ classdef Kin_Model < handle
         end
         
         function value = J(obj,q)
+            %Geometric Jacobian
+            %   q: joint positions. if not specified, symbolic variables
+            %   are used
             if isempty(obj.J_func)
                 obj.calculateJacobian();
             end
@@ -171,6 +168,12 @@ classdef Kin_Model < handle
             end
         end
         function value = inv_J(obj,q,lambda)
+            %Inverse of Geometric Jacobian
+            %   q: joint positions. if not specified, symbolic variables
+            %   are used
+            %   lambda: (Optional) Default 0. small positive value used to
+            %   eliminate singularities in inv_J using damped least squares
+            %   method
             if isempty(obj.inv_J0_func)
                 obj.calculatePesudoInvJacobian();
             end
@@ -243,6 +246,14 @@ classdef Kin_Model < handle
         end
         
         function draw(obj,q,drawFrames,ax,plotArgs,viewArgs)
+            %draw a visual representation of the manipulator with the
+            %specified joint variables.
+            %   q: column vector of joint variables
+            %   drawframes: Default false. Boolean. coordinate frame at
+            %   each reference frame. slows performance
+            %   ax: Default gca. The axis to draw on
+            %   plotArgs: cell array. passed to plot3
+            %   viewArgs: 3x1 vector representing view direction of plot
             
             if nargin<2 || isempty(q)
                 q=zeros(size(obj.q));
@@ -329,12 +340,23 @@ classdef Kin_Model < handle
         end
         
         function simulate(obj,q,delay,trace,drawArgs)
+            %Simulate a sequence of joint positions by repeatedly calling
+            %draw function
+            %   q: sequence of joint positions. joint values are column
+            %   vectors. each column represents the joint variables at
+            %   subsequent time steps
+            %   delay: time delay between each call to draw()
+            %   trace: display a line tracing end effector position over
+            %   time
+            %   drawArgs: cell aray containing arguments passed to
+            %   Kin_Model.draw()
+            
             if nargin<2 || isempty(q)
                 q=zeros(size(obj.q));
             end
             
-            if nargin<3 || isempty(delay)
-                delay=0.001;
+            if nargin<3 || isempty(delay) || delay==0
+                delay=0.0001;
             end
             
             if nargin<4 || isempty(trace)
@@ -407,7 +429,7 @@ classdef Kin_Model < handle
                 obj.q = jointVars;
             end
             assume(obj.q, 'real');
-            obj.q_limit=cell([size(obj.q,1),2]);
+            
             for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=tForms{i};
             end
@@ -424,7 +446,7 @@ classdef Kin_Model < handle
                 obj.q = jointVars;
             end
             assume(obj.q, 'real');
-            obj.q_limit=cell([size(obj.q,1),2]);
+            
             for i = 1:obj.n_frames
                 obj.T_matrices{i,i+1}=H_Trans.fromDH(DH_Matrix(i,:));
             end
@@ -505,7 +527,7 @@ classdef Kin_Model < handle
         
         function obj = calculateForwardKinematics(obj)
             T=obj.T(0,obj.n_frames);
-            obj.f_kin_func = T.getFunction(obj.q);
+            obj.f_kin_func = createFunction(T.H,obj.q);
         end
         
         function obj = calculateJacobian(obj)

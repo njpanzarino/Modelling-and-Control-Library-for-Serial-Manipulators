@@ -1,4 +1,10 @@
 function [equ,q,d_q,dd_q]=diffT(equ,q,d_q)
+%DIFFT Used to differentiate a symbolic expression with respect to time, 
+% even if the variables are not expressed with respect to time.
+%   equ: the expression to differentiate
+%   q: vector of variables which vary over time 
+%   d_q: (OPTIONAL) Time derivative of variables in q. specify only if
+%       known or performing the 2nd derivative.
     sz=size(q);
     
     t=sym('t',real);
